@@ -1,0 +1,12 @@
+setup.py
+lib/main.cpp
+src/hexitec/__init__.py
+src/hexitec/_version.py
+src/hexitec/adapter.py
+src/hexitec/controller.py
+src/hexitec/hexitec.py
+src/hexitec/test.py
+src/hexitec.egg-info/PKG-INFO
+src/hexitec.egg-info/SOURCES.txt
+src/hexitec.egg-info/dependency_links.txt
+src/hexitec.egg-info/top_level.txt

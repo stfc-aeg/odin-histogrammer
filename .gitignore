@@ -1,0 +1,6 @@
+*__pycache__
+*.so
+*.o
+.vscode
+.idea
+*.h5
