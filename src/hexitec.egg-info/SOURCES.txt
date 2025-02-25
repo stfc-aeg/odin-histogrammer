@@ -5,6 +5,7 @@ src/hexitec/_version.py
 src/hexitec/adapter.py
 src/hexitec/controller.py
 src/hexitec/hexitec.py
+src/hexitec/hexitecDefines.py
 src/hexitec/test.py
 src/hexitec.egg-info/PKG-INFO
 src/hexitec.egg-info/SOURCES.txt
