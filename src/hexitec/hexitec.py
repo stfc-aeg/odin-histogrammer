@@ -49,7 +49,7 @@ class Hexitec():
         self.absThres = [0, 600]
         self.clusterMode = self.get_define_from_config(config_options, "clustermode", HexitecDefines.CLUSTER_MODE_POS)
         self.clusterType = self.get_define_from_config(config_options, "clustertype", HexitecDefines.CLUSTER_ENB_ALL)
-        self.hist_format = self.get_define_from_config(config_options, "hist_format", HexitecDefines.HIST_FORMAT_RUN10)
+        self.histFormat = self.get_define_from_config(config_options, "hist_format", HexitecDefines.HIST_FORMAT_RUN10)
         self.mappedMode = self.get_define_from_config(config_options, "mappedmode", HexitecDefines.HIST_MAPPED_MODE_OFF)
 
         self.clusterMode_options = {
@@ -121,6 +121,24 @@ class Hexitec():
             "65536": HexitecDefines.BSUB_DIVIDE65536,
         }
 
+        self.histFormat_bins_options = {
+            "4096": HexitecDefines.HIST_SHIFT_ENG12,
+            "2048": HexitecDefines.HIST_SHIFT_ENG11,
+            "1024": HexitecDefines.HIST_SHIFT_ENG10,
+            "512": HexitecDefines.HIST_SHIFT_ENG9,
+            "256": HexitecDefines.HIST_SHIFT_ENG8,
+            "128": HexitecDefines.HIST_SHIFT_ENG7
+        }
+
+        self.histFormat_runMode_options = {
+            "normal": (0 << 3),
+            "eng_only": (1 << 3),
+            "eng_cc_pos": (2 << 3),
+            "eng_cc": (3 << 3),
+            "calib": (4 << 3),
+            "eng_cg_pos": (6 << 3)
+        }
+
         self.circ_writer = None
         self.circ_num_threads = 8
         self.inter_frame_gap = 4095
@@ -137,6 +155,8 @@ class Hexitec():
         self.lin_offset = 0.0
 
         self.itfg_input_frames = 0
+        self.itfg_output_frames = 1
+        self.itfg_cycles = 1
 
         self.chip_select = -1  # -1 means all chips
 
@@ -169,7 +189,7 @@ class Hexitec():
 
         self.settings_files = []
 
-        self.test_accel_tx_ip_addr = 10 << 24 | 0 << 16 | 101 << 8 | 109 # defaults, make them editable at some poitn
+        self.test_accel_tx_ip_addr = 10 << 24 | 0 << 16 | 101 << 8 | 109  # defaults, make them editable at some poitn
         self.test_server_ip_addr = 10 << 24 | 0 << 16 | 101 << 8 | 8
 
         self.frameCounter = []
@@ -182,8 +202,6 @@ class Hexitec():
         except RuntimeError:
             logging.error("Unable to connect to Device. check bus info:")
             logging.error("BusNum: %d, DevNum: %d, FuncNum: %d", self.busNum, self.devNum, self.funcNum)
-
-
 
     def setup_run(self, _=None):
         if not self.hexitec:
@@ -199,16 +217,12 @@ class Hexitec():
             self.hexitec.setPixelLUT(self.chip_select, HexitecDefines.REGION_BASELINE, 0, self.num_rows, 0, self.num_cols, 0)
 
         self.setup_trigger_thresholds()
-
         self.setup_linearity()
-
         self.setup_LUTS()
-
         self.load_settings(None)
-        
         self.setup_cluster(self.clusterMode, self.clusterType)
 
-        self.hexitec.setHistFormat(self.chip_select, self.hist_format, HexitecDefines.HIST_MAPPED_MODE_OFF)
+        self.hexitec.setHistFormat(self.chip_select, self.histFormat, HexitecDefines.HIST_MAPPED_MODE_OFF)
         self.status = "connected"
 
     def do_run(self, _=None):
@@ -246,7 +260,7 @@ class Hexitec():
             self.hexitec.loadBadPixelsOutputAscii(self.disable_pixel_out_asc_filename)
         
 
-        self.hexitec.setHistFormat(self.chip_select, self.hist_format, self.mappedMode)
+        self.hexitec.setHistFormat(self.chip_select, self.histFormat, self.mappedMode)
 
         self.hexitec.setGlobReg(HexitecDefines.GLB_DATA_PATH, HexitecDefines.DATA_PATH_ENB_FLUSH)
         self.hexitec.setRxEthernetLoopback(0)
@@ -283,18 +297,20 @@ class Hexitec():
 
         if self.runInfo.baseline & HexitecDefines.BASELINE_ENB:
             pass  # TEST BASELINE SETTLE LIVE GOES HERE
+            logging.error("BASELINE TESTING NOT IMPLEMENTED")
         else:
             logging.debug("STARTING SOME FORM OF RUN?")
             # Timing Options:
             # start run. Wait until key press
             # Run for fixed time
             # run using ITFG
-
+            useItfg = False
             if self.itfg_input_frames > 0:
                 self.hexitec.iTfgSetup(py_hexitec.SWFirst, 0, 0, 
                                        self.itfg_input_frames,
                                        self.itfg_output_frames,
                                        self.itfg_cycles)
+                useItfg = True
             else:
                 self.hexitec.iTfgDisable()
         
@@ -308,8 +324,31 @@ class Hexitec():
 
         self.hexitec.udpResetCounts(False)
         self.hexitec.enableHist()
+        if useItfg:
+            stat = py_hexitec.HexitecITfgStat()
+            prevStat      = 0xFFFFFFFF
+            prevInpFrame  = 0xFFFFFFFF
+            prevTimeFrame = 0xFFFFFFFF
+            prevCycles    = 0xFFFFFFFF
 
-        if self.runTimer > 0:
+            self.hexitec.iTfgTrigger()
+            while True:
+                # this is to replicate a do... while loop, we'll break if we need to
+                self.hexitec.iTfgReadStatus(stat)
+                if (prevStat != stat.status or prevInpFrame != stat.inpFrame or
+                    prevTimeFrame != stat.timeFrame or prevCycles != stat.cycles):
+                    
+                    logging.debug("Status: %08X, inpFrame: %10d, outFrame: %4d, cycles: %4d",
+                                  stat.status, stat.inpFrame, stat.timeFrame, stat.cycles)
+                prevStat = stat.status
+                prevInpFrame = stat.inpFrame
+                prevTimeFrame = stat.timeFrame
+                prevCycles = stat.cycles
+                time.sleep(0.001)  # I continue to be dubious about using time.sleep
+                if stat.status & HexitecDefines.ITFG_STAT_FINISHED:
+                    break  # aquisition finished, end the loop
+            self.stop_run()
+        elif self.runTimer > 0:
             logging.debug("Running for %d seconds", self.runTimer)
             time.sleep(self.runTimer)
             self.stop_run()
@@ -321,11 +360,7 @@ class Hexitec():
         
         totalHits = 0
 
-        # self.hexitec.getDiagnosticCounters(self.frameCounter, self.rawHitCounter)
-
-
         frameToken = self.hexitec.getFlushedFrame()
-
 
         self.frameCounter = []
         self.rawHitCounter = []
@@ -376,7 +411,6 @@ class Hexitec():
             
             del self.circ_writer
             self.circ_writer = None
-
 
         self.status = "completed"
 

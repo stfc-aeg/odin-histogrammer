@@ -26,8 +26,7 @@ PYBIND11_MODULE(py_hexitec, m) {
     m.doc() = "Hexitec Python Binding";
     py::class_<XDmaHexitec> hexitec(m, "XDmaHexitec");
     py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
-
-    // m.def("getPointerFromList", &getPointerFromList);
+    py::class_<HexitecITfgStat> HexitecITfgStat(m, "HexitecITfgStat");
 
     hexitec.def(py::init<int, int, int, int>())
         .def("getNumChips", &XDmaHexitec::getNumChips)
@@ -197,6 +196,12 @@ PYBIND11_MODULE(py_hexitec, m) {
         .def("checkProgress", &CircularHdfWriter::checkProgress)
         .def("getMappedOverRuns", &CircularHdfWriter::getMappedOverRuns)
         .def("getSpectraOverRuns", &CircularHdfWriter::getSpectraOverRuns);
+
+    HexitecITfgStat.def(py::init<>())
+        .def_readwrite("status", &HexitecITfgStat::status)
+        .def_readwrite("inpFrame", &HexitecITfgStat::status)
+        .def_readwrite("timeFrame", &HexitecITfgStat::status)
+        .def_readwrite("cycles", &HexitecITfgStat::status);
 
     py::enum_<HexitecGeneration>(m, "HexitecGeneration")
         .value("HexitecGenHexitec", HexitecGeneration::HexitecGenHexitec)

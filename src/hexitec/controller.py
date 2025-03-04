@@ -102,6 +102,12 @@ class HexitecController():
                 {
                     "saveHdf5": (lambda: self.hexitec.filenames['save_hdf'], partial(self.setFilename, "save_hdf"))
                 },
+                "itfg":
+                {
+                    "input_frames": (lambda: self.hexitec.itfg_input_frames, partial(self.set_value, "itfg_input_frames")),
+                    "output_frames": (lambda: self.hexitec.itfg_output_frames, partial(self.set_value, "itfg_output_frames")),
+                    "cycles": (lambda: self.hexitec.itfg_cycles, partial(self.set_value, "itfg_cycles"))
+                }
 
             }
         }

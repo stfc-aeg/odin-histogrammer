@@ -30,21 +30,61 @@ class HexitecDefines():
     CLUSTER_MODE_AUTO_OR_POS = 6  # Pseduo randomly trigger to allow histogram of noise but also trigger using normal Positive event trigger to see events.
     CLUSTER_MODE_AUTO        = 7  # Pseduo randomly trigger to allow histogram of noise
 
-    HIST_SHIFT_ENG12    = 0  # Make histograms with 4096 energy bins 
-    HIST_SHIFT_ENG11    = 1  # Make histograms with 2048 energy bins 
-    HIST_SHIFT_ENG10    = 2  # Make histograms with 1024 energy bins 
-    HIST_SHIFT_ENG9     = 3  # Make histograms with 512  energy bins 
-    HIST_SHIFT_ENG8     = 4  # Make histograms with 256  energy bins 
+    HIST_SHIFT_ENG12    = 0  # Make histograms with 4096 energy bins
+    HIST_SHIFT_ENG11    = 1  # Make histograms with 2048 energy bins
+    HIST_SHIFT_ENG10    = 2  # Make histograms with 1024 energy bins
+    HIST_SHIFT_ENG9     = 3  # Make histograms with 512  energy bins
+    HIST_SHIFT_ENG8     = 4  # Make histograms with 256  energy bins
     HIST_SHIFT_ENG7     = 5  # Make histograms with 128  energy bins
     HIST_SHIFT_ENG10LSB = 6  # Make histograms with 128  energy bins
 
     HIST_FORMAT_RUN12 = ((0 << 3) | HIST_SHIFT_ENG12)  # Normal run mode, Row, column and 4096 energy bins
-    HIST_FORMAT_RUN11 = ((0 << 3) | HIST_SHIFT_ENG11)  # Normal run mode, Row, column and 2048 energy bins   
-    HIST_FORMAT_RUN10 = ((0 << 3) | HIST_SHIFT_ENG10)  # Normal run mode, Row, column and 1024 energy bins   
-    HIST_FORMAT_RUN9 = ((0 << 3) | HIST_SHIFT_ENG9)  # Normal run mode, Row, column and 512  energy bins   
-    HIST_FORMAT_RUN8 = ((0 << 3) | HIST_SHIFT_ENG8)  # Normal run mode, Row, column and 256  energy bins   
-    HIST_FORMAT_RUN7 = ((0 << 3) | HIST_SHIFT_ENG7)  # Normal run mode, Row, column and 128  energy bins   
+    HIST_FORMAT_RUN11 = ((0 << 3) | HIST_SHIFT_ENG11)  # Normal run mode, Row, column and 2048 energy bins
+    HIST_FORMAT_RUN10 = ((0 << 3) | HIST_SHIFT_ENG10)  # Normal run mode, Row, column and 1024 energy bins
+    HIST_FORMAT_RUN9  = ((0 << 3) | HIST_SHIFT_ENG9)  # Normal run mode, Row, column and 512  energy bins
+    HIST_FORMAT_RUN8  = ((0 << 3) | HIST_SHIFT_ENG8)  # Normal run mode, Row, column and 256  energy bins
+    HIST_FORMAT_RUN7  = ((0 << 3) | HIST_SHIFT_ENG7)  # Normal run mode, Row, column and 128  energy bins
     HIST_FORMAT_RUN10LSB = ((0 << 3) | HIST_SHIFT_ENG10LSB)  # Normal run mode, Row, column and bottom 10 bits of Energy (for lower energy experiments)
+    
+    HIST_FORMAT_ENG_ONLY12 = ((1 << 3) | HIST_SHIFT_ENG12)  # 0-d energy only run mode with row and column removed and 4096 energy bins 
+    HIST_FORMAT_ENG_ONLY11 = ((1 << 3) | HIST_SHIFT_ENG11)  # 0-d energy only run mode with row and column removed and 2048 energy bins 
+    HIST_FORMAT_ENG_ONLY10 = ((1 << 3) | HIST_SHIFT_ENG10)  # 0-d energy only run mode with row and column removed and 1024 energy bins 
+    HIST_FORMAT_ENG_ONLY9 =  ((1 << 3) | HIST_SHIFT_ENG9)  # 0-d energy only run mode with row and column removed and 512  energy bins 
+    HIST_FORMAT_ENG_ONLY8 =  ((1 << 3) | HIST_SHIFT_ENG8)  # 0-d energy only run mode with row and column removed and 256  energy bins 
+    HIST_FORMAT_ENG_ONLY7 =  ((1 << 3) | HIST_SHIFT_ENG7)  # 0-d energy only run mode with row and column removed and 128  energy bins 
+    HIST_FORMAT_ENG_POS_CC12 = ((2 << 3) | HIST_SHIFT_ENG12)  # Debug mode with Cluster Class (4 bits) position and 4096 energy bins 
+    HIST_FORMAT_ENG_POS_CC11 = ((2 << 3) | HIST_SHIFT_ENG11)  # Debug mode with Cluster Class (4 bits) position and 2048 energy bins 
+    HIST_FORMAT_ENG_POS_CC10 = ((2 << 3) | HIST_SHIFT_ENG10)  # Debug mode with Cluster Class (4 bits) position and 1024 energy bins 
+    HIST_FORMAT_ENG_POS_CC9 = ((2 << 3) | HIST_SHIFT_ENG9)  # Debug mode with Cluster Class (4 bits) position and 512  energy bins 
+    HIST_FORMAT_ENG_POS_CC8 = ((2 << 3) | HIST_SHIFT_ENG8)  # Debug mode with Cluster Class (4 bits) position and 256  energy bins 
+    HIST_FORMAT_ENG_POS_CC7 = ((2 << 3) | HIST_SHIFT_ENG7)  # Debug mode with Cluster Class (4 bits) position and 128  energy bins 
+    HIST_FORMAT_ENG_POS_CC10LSB = ((2 << 3) | HIST_SHIFT_ENG10LSB)  # Debug mode with Cluster Class (4 bits) position and bottom 10 bits of Energy 
+
+    HIST_FORMAT_ENG_ONLY_CC12 = ((3 << 3) | HIST_SHIFT_ENG12)  # Debug mode with Cluster Class (4 bits) and 4096 energy bins 
+    HIST_FORMAT_ENG_ONLY_CC11 = ((3 << 3) | HIST_SHIFT_ENG11)  # Debug mode with Cluster Class (4 bits) and 2048 energy bins 
+    HIST_FORMAT_ENG_ONLY_CC10 = ((3 << 3) | HIST_SHIFT_ENG10)  # Debug mode with Cluster Class (4 bits) and 1024 energy bins 
+    HIST_FORMAT_ENG_ONLY_CC9 = ((3 << 3) | HIST_SHIFT_ENG9)  # Debug mode with Cluster Class (4 bits) and 512  energy bins 
+    HIST_FORMAT_ENG_ONLY_CC8 = ((3 << 3) | HIST_SHIFT_ENG8)  # Debug mode with Cluster Class (4 bits) and 256  energy bins 
+    HIST_FORMAT_ENG_ONLY_CC7 = ((3 << 3) | HIST_SHIFT_ENG7)  # Debug mode with Cluster Class (4 bits) and 128  energy bins 
+
+    HIST_FORMAT_CALIB_COMB12 = ((4 << 3) | HIST_SHIFT_ENG12)   # Calibration mode overlaying all pixels, 4 bits of Cluster class, 1024 bins of LUT address and 4096 energy bins
+    HIST_FORMAT_CALIB_COMB11 = ((4 << 3) | HIST_SHIFT_ENG11)   # Calibration mode overlaying all pixels, 4 bits of Cluster class, 1024 bins of LUT address and 2048 energy bins
+    HIST_FORMAT_CALIB_COMB10 = ((4 << 3) | HIST_SHIFT_ENG10)   # Calibration mode overlaying all pixels, 4 bits of Cluster class, 1024 bins of LUT address and 1024 energy bins
+    HIST_FORMAT_CALIB_COMBTYPE = ((5 << 3) | HIST_SHIFT_ENG10)   # Calibration mode overlaying all pixels, all 6 Cluster type bits, 1024 bins of LUT address and 1024 energy bins  
+    HIST_FORMAT_CALIB_SEPARATE = ((5 << 3) | HIST_SHIFT_ENG9)  # Calibration mode separating pixels, 256 bins of LUT address and 512 energy bins   
+
+    HIST_FORMAT_ENG_POS_CG12 = ((6 << 3) | HIST_SHIFT_ENG12)  # Run mode with Cluster Grade (1 bit) position and 4096 energy bins 
+    HIST_FORMAT_ENG_POS_CG11 = ((6 << 3) | HIST_SHIFT_ENG11)  # Run mode with Cluster Grade (1 bit) position and 2048 energy bins 
+    HIST_FORMAT_ENG_POS_CG10 = ((6 << 3) | HIST_SHIFT_ENG10)  # Run mode with Cluster Grade (1 bit) position and 1024 energy bins 
+    HIST_FORMAT_ENG_POS_CG9 = ((6 << 3) | HIST_SHIFT_ENG9)  # Run mode with Cluster Grade (1 bit) position and 512  energy bins 
+    HIST_FORMAT_ENG_POS_CG8 = ((6 << 3) | HIST_SHIFT_ENG8)  # Run mode with Cluster Grade (1 bit) position and 256  energy bins 
+    HIST_FORMAT_ENG_POS_CG7 = ((6 << 3) | HIST_SHIFT_ENG7)  # Run mode with Cluster Grade (1 bit) position and 128  energy bins 
+    HIST_FORMAT_ENG_POS_CG10LSB = ((6 << 3) | HIST_SHIFT_ENG10LSB)  # Run mode with Cluster Grade (1 bit) position and bottom 10 bits of Energy 
+
+    HIST_FORMAT_CHARAC2D12 = ((7 << 3) | 0)  # Characterisation plot for up to 2 pixel clusters, 12 bits resolution fo main peak
+    HIST_FORMAT_CHARAC3D = ((7 << 3) | 1)  # Characterisation plot for up to 3 pixel clusters
+    HIST_FORMAT_CHARAC4D = ((7 << 3) | 2)  # Characterisation plot for up to 4 pixel clusters
+    HIST_FORMAT_CHARAC2D10 = ((7 << 3) | 3)
 
     HIST_MAPPED_MODE_OFF = 0
     HIST_MAPPED_MODE_ONLY = 1
@@ -98,6 +138,10 @@ class HexitecDefines():
     GLB_TD_ITFG_TIME_FRAME = 0x118  # Monitor Count UP of current output time frame.
     GLB_TD_ITFG_CYCLES = 0x119  # Monitor Count UP of current output time frame.
 
+    ITFG_STAT_RUNNING  = (1 << 0)  # ITFG is running (including paused waiting for triggers if used)
+    ITFG_STAT_PAUSED   = (1 << 1)  # ITFG is paused, waiting for trigger.
+    ITFG_STAT_FINISHED = (1 << 2)  # ITFG is has finished.
+
     GLB_FRAME_COUNT = 0x130  # Hexitec MHz Frame Count (Chip 0)
     GLB_RAW_HIT_COUNT = 0x131  # Hexitec MHz Raw Hit Count  (Chip 0)
     GLB_REORDER_STATUS = 0x11A  # Hexitec 6x2: Reorder block status
@@ -142,4 +186,4 @@ class HexitecDefines():
     FLUSHED_FRAME_VALID = (1 << 63)  # mask to determine if any time frame token has reached the histogram output this run
     FLUSHED_FRAME_GET = 0xFFFFFFFFF  # Extract flushed frame token from the output word
 
-    SCOPE_STAT_RUNNING = (1<<31)  # Sysytem is running and has not reached the end of a short busrt.
+    SCOPE_STAT_RUNNING = (1 << 31)  # Sysytem is running and has not reached the end of a short busrt.
