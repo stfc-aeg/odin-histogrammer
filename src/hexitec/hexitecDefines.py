@@ -187,3 +187,9 @@ class HexitecDefines():
     FLUSHED_FRAME_GET = 0xFFFFFFFFF  # Extract flushed frame token from the output word
 
     SCOPE_STAT_RUNNING = (1 << 31)  # Sysytem is running and has not reached the end of a short busrt.
+
+    SEND_UDP_ANY = 0x0300
+    SEND_UDP_FRAMES = 0x0100
+    SEND_UDP_DIST = 0x0200
+    SEND_UDP_NO_CLEAR = 0x0400
+    SEND_UDP_TF_FROM0 = 0x0800

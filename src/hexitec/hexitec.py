@@ -2,6 +2,8 @@ import logging
 import py_hexitec
 import time
 
+from tornado.ioloop import PeriodicCallback
+
 from .hexitecDefines import HexitecDefines
 
 
@@ -15,9 +17,7 @@ class TestRunInfo():
         self.run_circular = options.get('run_circular') == "true"
         self.enb_dither = options.get('enb_dither') == "true"
         self.manual_wait = options.get('manual_wait') == "true"
-        self.send_udp_any = options.get('send_udp_any') == "true"
-        self.send_udp_frames = options.get('send_udp_frames') == "true"
-        self.send_udp_dist = options.get('send_udp_dist') == "true"
+        self.send_udp = options.get('send_udp', 0)
         self.send_udp_no_clear = options.get('set_udp_no_clear') == "true"
         self.send_from0 = options.get('send_from0') == "true"
         self.print_fifo = options.get('print_fifo') == "true"
@@ -38,9 +38,12 @@ class Hexitec():
 
         self.runInfo = runInfo
 
+        self.sendUdp = self.runInfo.send_udp
+
         self.runTimer = 1
 
         self.status = "disconnected"
+        self.running_flag = False
 
         self.bsubMask = self.get_define_from_config(config_options, "bsubmask", HexitecDefines.BSUB_MASK_MAIN)
         self.bsubDivide = self.get_define_from_config(config_options, "bsubdivide", HexitecDefines.BSUB_DIVIDE2048)
@@ -120,7 +123,7 @@ class Hexitec():
             "32768": HexitecDefines.BSUB_DIVIDE32768,
             "65536": HexitecDefines.BSUB_DIVIDE65536,
         }
-
+        self.histFormat_bins = HexitecDefines.HIST_SHIFT_ENG10
         self.histFormat_bins_options = {
             "4096": HexitecDefines.HIST_SHIFT_ENG12,
             "2048": HexitecDefines.HIST_SHIFT_ENG11,
@@ -129,7 +132,7 @@ class Hexitec():
             "256": HexitecDefines.HIST_SHIFT_ENG8,
             "128": HexitecDefines.HIST_SHIFT_ENG7
         }
-
+        self.histFormat_runMode = (0 << 3)
         self.histFormat_runMode_options = {
             "normal": (0 << 3),
             "eng_only": (1 << 3),
@@ -137,6 +140,13 @@ class Hexitec():
             "eng_cc": (3 << 3),
             "calib": (4 << 3),
             "eng_cg_pos": (6 << 3)
+        }
+
+        self.sendUdp_options = {
+            "none": 0,
+            "frames": HexitecDefines.SEND_UDP_FRAMES,
+            "dist": HexitecDefines.SEND_UDP_DIST,
+            "any": HexitecDefines.SEND_UDP_ANY
         }
 
         self.circ_writer = None
@@ -160,10 +170,6 @@ class Hexitec():
 
         self.chip_select = -1  # -1 means all chips
 
-        self.pos_cshare_filename = None
-        self.pos_cshare_mc_filename = None
-        self.pos_cshare_l3_filename = None
-
         self.gain_asc_filename = None
         self.linearity_asc_filename = None
         self.disable_pixel_trig_asc_filename = None
@@ -177,14 +183,17 @@ class Hexitec():
         self.add_baseline = 0
 
         self.filenames = {
-            "CShareAscii": None,
-            "CShareAsciiMC": None,
-            "CShareAsciiL3": None,
-            "linearityGainHDF5": None,
-            "gain_asc": None,
+            "CShareAscii": ["", False],
+            "CShareAsciiMC": ["", False],
+            "CShareAsciiL3": ["", False],
+            "linearityGainHDF5": ["", False],
+            "gainAscii": ["", False],
+            "linearityAscii": ["", False],
 
-            "save_settings": None,
-            "save_hdf": None
+            "save_settings": ["", False],
+            "save_hdf": ["", False],
+            "save_det": ["", False],
+            "save_asc": ["", False],
         }
 
         self.settings_files = []
@@ -192,8 +201,11 @@ class Hexitec():
         self.test_accel_tx_ip_addr = 10 << 24 | 0 << 16 | 101 << 8 | 109  # defaults, make them editable at some poitn
         self.test_server_ip_addr = 10 << 24 | 0 << 16 | 101 << 8 | 8
 
-        self.frameCounter = []
-        self.rawHitCounter = []
+        self.frameCounter = 0
+        self.totalHits = 0
+        self.udpTF = 0
+        self.completeTimeFrame = 0
+        
 
     def connect(self, _=None):
         try:
@@ -208,7 +220,7 @@ class Hexitec():
             return
         self.status = "configuring"
 
-        self.hexitec.setGlobReg(HexitecDefines.GLB_RUN_REG, 0)
+        self.hexitec.setGlobReg(HexitecDefines.GLB_RUN_REG, 0)  # turn off the run bit
 
         useAbsTrig = not (self.bsubMask == HexitecDefines.BSUB_MASK_FIXED)  # if bsubMask is FIXED, can't use AbsTrigger
         self.hexitec.setBaselineMode(self.chip_select, self.bsubMask, self.bsubDivide, self.runInfo.enb_dither, useAbsTrig)
@@ -250,15 +262,14 @@ class Hexitec():
 
         # loading saved settings
 
-        if self.gain_asc_filename:
-            self.hexitec.loadLinearityGainAscii(self.chip_select, self.gain_asc_filename, self.linear_offset)
-        if self.linearity_asc_filename:
-            self.hexitec.loadLinearityAscii(self.chip_select, self.linearity_asc_filename)
-        if self.disable_pixel_trig_asc_filename:
-            self.hexitec.loadBadPixelsTrigAscii(self.disable_pixel_trig_asc_filename)
-        if self.disable_pixel_out_asc_filename:
-            self.hexitec.loadBadPixelsOutputAscii(self.disable_pixel_out_asc_filename)
-        
+        if self.filenames['gainAscii'][1]:
+            self.hexitec.loadLinearityGainAscii(self.chip_select, self.filenames['gainAscii'][0], self.linear_offset)
+        if self.filenames['linearityAscii'][1]:
+            self.hexitec.loadLinearityAscii(self.chip_select, self.filenames['linearityAscii'][0])
+        # if self.disable_pixel_trig_asc_filename:  # not referenced in the manual for hexitec test? gunna comment out for now
+        #     self.hexitec.loadBadPixelsTrigAscii(self.disable_pixel_trig_asc_filename)
+        # if self.disable_pixel_out_asc_filename:
+        #     self.hexitec.loadBadPixelsOutputAscii(self.disable_pixel_out_asc_filename)
 
         self.hexitec.setHistFormat(self.chip_select, self.histFormat, self.mappedMode)
 
@@ -270,7 +281,7 @@ class Hexitec():
             if self.hexitec.getGeneration() == py_hexitec.HexitecGenHexitec:
                 self.hexitec.setRxEthernetReg(i, HexitecDefines.ETHERNET_PM_TICK_REG, 1)
         
-        if self.runInfo.send_udp_any or self.runInfo.send_udp_frames or self.runInfo.send_udp_dist:
+        if self.sendUdp | HexitecDefines.SEND_UDP_ANY:
             self.hexitec.stopDataMoverStreamUDP(0)  # Stop any running data move r(UDP) TX
             self.hexitec.stopDataMoverStreamUDP(1)
 
@@ -291,15 +302,15 @@ class Hexitec():
 
         # some stuff for ssave file names goes here?
 
-        if self.filenames['save_settings']:
-            self.hexitec.saveSettingsHdf5(self.save_settings_filename, self.chip_select,
+        if self.filenames['save_settings'][1]:
+            self.hexitec.saveSettingsHdf5(self.filenames['save_settings'][0], self.chip_select,
                                           py_hexitec.HexitecSaveRestore_All)
 
         if self.runInfo.baseline & HexitecDefines.BASELINE_ENB:
             pass  # TEST BASELINE SETTLE LIVE GOES HERE
             logging.error("BASELINE TESTING NOT IMPLEMENTED")
         else:
-            logging.debug("STARTING SOME FORM OF RUN?")
+            logging.debug("STARTING RUN")
             # Timing Options:
             # start run. Wait until key press
             # Run for fixed time
@@ -335,43 +346,48 @@ class Hexitec():
             while True:
                 # this is to replicate a do... while loop, we'll break if we need to
                 self.hexitec.iTfgReadStatus(stat)
-                if (prevStat != stat.status or prevInpFrame != stat.inpFrame or
-                    prevTimeFrame != stat.timeFrame or prevCycles != stat.cycles):
+                # if (prevStat != stat.status or prevInpFrame != stat.inpFrame or
+                #     prevTimeFrame != stat.timeFrame or prevCycles != stat.cycles):
                     
-                    logging.debug("Status: %08X, inpFrame: %10d, outFrame: %4d, cycles: %4d",
-                                  stat.status, stat.inpFrame, stat.timeFrame, stat.cycles)
+                logging.debug("Status: %08X, inpFrame: %10d, outFrame: %4d, cycles: %4d",
+                                stat.status, stat.inpFrame, stat.timeFrame, stat.cycles)
                 prevStat = stat.status
                 prevInpFrame = stat.inpFrame
                 prevTimeFrame = stat.timeFrame
                 prevCycles = stat.cycles
-                time.sleep(0.001)  # I continue to be dubious about using time.sleep
+                time.sleep(0.01)  # I continue to be dubious about using time.sleep
                 if stat.status & HexitecDefines.ITFG_STAT_FINISHED:
                     break  # aquisition finished, end the loop
             self.stop_run()
         elif self.runTimer > 0:
             logging.debug("Running for %d seconds", self.runTimer)
-            time.sleep(self.runTimer)
+            start_time = time.time()
+            while time.time() - start_time < self.runTimer:
+                run_info = self.get_run_info()
+                self.frameCounter = run_info[0]
+                self.totalHits = run_info[1]
+                self.udpTF = run_info[2]
+                self.completeTimeFrame = run_info[3]
+                time.sleep(0.01)
+
             self.stop_run()
         else:
             logging.debug("Running until stopped")
+            while self.running_flag:
+                run_info = self.get_run_info()
+                self.frameCounter = run_info[0]
+                self.totalHits = run_info[1]
+                self.udpTF = run_info[2]
+                self.completeTimeFrame = run_info[3]
+                time.sleep(0.01)
+            
 
             
     def stop_run(self, _=None):
-        
+
         totalHits = 0
 
         frameToken = self.hexitec.getFlushedFrame()
-
-        self.frameCounter = []
-        self.rawHitCounter = []
-        for i in range(self.hexitec.getNumChips()):
-            self.frameCounter.append(self.hexitec.getGlobReg(HexitecDefines.GLB_FRAME_COUNT + (2*i)))
-            self.rawHitCounter.append(self.hexitec.getGlobReg(HexitecDefines.GLB_RAW_HIT_COUNT + (2*i)))
-
-            totalHits += self.rawHitCounter[i]
-
-        inpTimeFrame = self.hexitec.getInpTimeFrame(0)
-        udpTimeFrame = inpTimeFrame & 0x7FFFFFFFF
 
         if frameToken & HexitecDefines.FLUSHED_FRAME_VALID:  # checking flushed frame valid
             lastFlushedFrame = frameToken & HexitecDefines.FLUSHED_FRAME_GET
@@ -381,20 +397,21 @@ class Hexitec():
         self.hexitec.setGlobReg(HexitecDefines.GLB_RUN_REG, 0)  # Turn off Run bit to force flush of hist caches.
 
         for i in range(self.hexitec.getNumChips()):
-            if self.frameCounter[i] > 0:
-                logging.debug("Chip %d: Frames = %d, Raw Hits = %d", i, self.frameCounter[i], self.rawHitCounter[i])
+            if self.frameCounter > 0:
+                logging.debug("Chip %d: Frames = %d, Raw Hits = %d", i, self.frameCounter, self.totalHits)
         
         status = self.hexitec.getGlobReg(HexitecDefines.GLB_REORDER_STATUS)
 
         #TODO: print status stuff here
 
         #TODO: save data stuff here
-        if self.filenames['save_hdf'] and self.circ_writer is None:
-            logging.debug("Saving Hdf5: %s, mappedMode: %s", self.filenames['save_hdf'], self.mappedMode != HexitecDefines.HIST_MAPPED_MODE_OFF)
-            self.hexitec.saveSpectraHdf5(self.filenames['save_hdf'], self.chip_select, -1, 0, 1, 1, True, self.mappedMode != HexitecDefines.HIST_MAPPED_MODE_OFF, True)
+        if self.filenames['save_hdf'][1] and self.circ_writer is None:
+            logging.debug("Saving Hdf5: %s, mappedMode: %s", self.filenames['save_hdf'][0], self.mappedMode != HexitecDefines.HIST_MAPPED_MODE_OFF)
+            self.hexitec.saveSpectraHdf5(self.filenames['save_hdf'][0], self.chip_select, -1, 0, 1, 1, True, self.mappedMode != HexitecDefines.HIST_MAPPED_MODE_OFF, True)
         if self.circ_writer:
             curProgress = self.circ_writer.checkProgress(lastFlushedFrame)
             retries = 0
+            lastProgress = None
             while curProgress > lastFlushedFrame:
                 if curProgress == lastProgress:
                     retries += 1
@@ -413,6 +430,7 @@ class Hexitec():
             self.circ_writer = None
 
         self.status = "completed"
+        self.running_flag = False
 
     def setup_trigger_thresholds(self, _=None):
         self.hexitec.setAbsTriggerThres(self.chip_select, 0, self.num_cols, 0, self.num_rows, self.absThres[1], self.absThres[0])
@@ -443,8 +461,8 @@ class Hexitec():
 
     def setup_linearity(self):
         self.hexitec.setLinearityOne(self.chip_select, self.linear_offset)
-        if self.filenames['linearityGainHDF5']:
-            self.hexitec.loadLinearityGainHDF5(self.filenames['linearityGainHDF5'], 40.0)
+        if self.filenames['linearityGainHDF5'][1]:
+            self.hexitec.loadLinearityGainHDF5(self.filenames['linearityGainHDF5'][0], 40.0)
 
     def setup_RxEthernet(self):
         pass
@@ -461,12 +479,17 @@ class Hexitec():
         self.hexitec.initPixelMask(self.chip_select)
 
     def load_settings(self, _):
-        if self.filenames["CShareAscii"]:
-            self.hexitec.loadCShareAscii(self.chip_select, HexitecDefines.REGION_EDGE_POS_M, self.filenames['CShareAscii'])
-        if self.filenames["CShareAsciiMC"]:
-            self.hexitec.loadCShareAsciiMC(self.chip_select, HexitecDefines.REGION_EDGE_POS_M, self.filenames['CShareAsciiMC'])
-        if self.filenames["CShareAsciiL3"]:
-            self.hexitec.loadCShareAscii(self.chip_select, HexitecDefines.REGION_L_POS_M, self.filenames['CShareAsciiL3'])
+        if self.filenames["CShareAscii"][1]:
+            self.hexitec.loadCShareAscii(self.chip_select, HexitecDefines.REGION_EDGE_POS_M, self.filenames['CShareAscii'][0])
+        if self.filenames["CShareAsciiMC"][1]:
+            self.hexitec.loadCShareAsciiMC(self.chip_select, HexitecDefines.REGION_EDGE_POS_M, self.filenames['CShareAsciiMC'][0])
+        if self.filenames["CShareAsciiL3"][1]:
+            self.hexitec.loadCShareAscii(self.chip_select, HexitecDefines.REGION_L_POS_M, self.filenames['CShareAsciiL3'][0])
+        if self.filenames['gainAscii'][1]:
+            self.hexitec.loadLinearityGainAscii(self.chip_select, self.filenames['gainAscii'][0], self.linear_offset)
+        if self.filenames['linearityAscii'][1]:
+            self.hexitec.loadLinearityAscii(self.chip_select, self.filenames['linearityAscii'][0])
+        
 
         for settings_file in self.settings_files:
             self.hexitec.loadSettingsHdf5(settings_file, self.chip_select, py_hexitec.HexitecSaveRestore.HexitecSaveRestore_All)
@@ -516,7 +539,7 @@ class Hexitec():
 
         if self.runInfo.no_clear:
             autoMode = self.hexitec.AutoTriggerRead
-        if self.runInfo.send_udp_dist:
+        if self.sendUdp | HexitecDefines.SEND_UDP_DIST:
             farmIndexMode = self.hexitec.FarmIndexIncEOP
 
         farmBase = 0
@@ -592,3 +615,28 @@ class Hexitec():
                     return default
         else:
             return default
+
+    def get_run_info(self):
+
+        if self.hexitec:
+            totalHits = 0
+
+            frameToken = self.hexitec.getFlushedFrame()
+
+            frameCounter = []
+            rawHitCounter = []
+            for i in range(self.hexitec.getNumChips()):
+                frameCounter.append(self.hexitec.getGlobReg(HexitecDefines.GLB_FRAME_COUNT + (2*i)))
+                rawHitCounter.append(self.hexitec.getGlobReg(HexitecDefines.GLB_RAW_HIT_COUNT + (2*i)))
+
+                totalHits += rawHitCounter[i]
+            
+            inpTimeFrame = self.hexitec.getInpTimeFrame(0)
+            udpTimeFrame = inpTimeFrame & 0x7FFFFFFFF
+
+            if frameToken & HexitecDefines.FLUSHED_FRAME_VALID:
+                logging.debug("Detector Frames: %d, Total Raw Hits: %d, UDP TF: %d, Finished Time Frames: %d",
+                              frameCounter[0], totalHits, udpTimeFrame, frameToken & HexitecDefines.FLUSHED_FRAME_GET)
+
+            return (frameCounter[0], totalHits, udpTimeFrame, frameToken & HexitecDefines.FLUSHED_FRAME_GET)
+
