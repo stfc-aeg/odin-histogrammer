@@ -4,3 +4,5 @@
 .vscode
 .idea
 *.h5
+*.egg-info
+*_version.py

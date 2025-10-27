@@ -1,5 +1,5 @@
 import logging
-import py_hexitec
+import xdma_hexitec
 import time
 
 from tornado.ioloop import PeriodicCallback
@@ -29,7 +29,7 @@ class Hexitec():
 
     def __init__(self, runInfo: TestRunInfo, config_options) -> None:
         
-        self.hexitec = None  # py_hexitec.XDmaHexitec(useQDma, busNum, devNum, funcNum)
+        self.hexitec = None  # xdma_hexitec.XDmaHexitec(useQDma, busNum, devNum, funcNum)
 
         self.useQdma = config_options.get('useqdma', False)
         self.busNum = int(config_options.get('busnum', 0))
@@ -209,7 +209,7 @@ class Hexitec():
 
     def connect(self, _=None):
         try:
-            self.hexitec = py_hexitec.XDmaHexitec(self.useQdma, self.busNum, self.devNum, self.funcNum)
+            self.hexitec = xdma_hexitec.XDmaHexitec(self.useQdma, self.busNum, self.devNum, self.funcNum)
             self.status = "connected"
         except RuntimeError:
             logging.error("Unable to connect to Device. check bus info:")
@@ -253,9 +253,9 @@ class Hexitec():
             self.hexitec.loadEngMapAscii(self.chip_select, self.mapped_fname)
 
         if self.runInfo.from_host:
-            connType = py_hexitec.HexitecUdpRxConnection.FromHost
+            connType = xdma_hexitec.HexitecUdpRxConnection.FromHost
         else:
-            connType = py_hexitec.HexitecUdpRxConnection.Normal
+            connType = xdma_hexitec.HexitecUdpRxConnection.Normal
 
         if self.runInfo.mask_rhs:
             self.hexitec.setMainTriggerThres(self.chip_select, 64, 16, 0, 80, self.mainThres[1], self.mainThres[0], False)
@@ -278,7 +278,7 @@ class Hexitec():
         self.hexitec.udpRxSetup(self.head_ip_addr, self.accel_rx_ip_addr, self.head_port, self.accel_rx_port, connType)
 
         for i in range(self.hexitec.getNumRxUdp()):
-            if self.hexitec.getGeneration() == py_hexitec.HexitecGenHexitec:
+            if self.hexitec.getGeneration() == xdma_hexitec.HexitecGenHexitec:
                 self.hexitec.setRxEthernetReg(i, HexitecDefines.ETHERNET_PM_TICK_REG, 1)
         
         if self.sendUdp | HexitecDefines.SEND_UDP_ANY:
@@ -304,7 +304,7 @@ class Hexitec():
 
         if self.filenames['save_settings'][1]:
             self.hexitec.saveSettingsHdf5(self.filenames['save_settings'][0], self.chip_select,
-                                          py_hexitec.HexitecSaveRestore_All)
+                                          xdma_hexitec.HexitecSaveRestore_All)
 
         if self.runInfo.baseline & HexitecDefines.BASELINE_ENB:
             pass  # TEST BASELINE SETTLE LIVE GOES HERE
@@ -317,7 +317,7 @@ class Hexitec():
             # run using ITFG
             useItfg = False
             if self.itfg_input_frames > 0:
-                self.hexitec.iTfgSetup(py_hexitec.SWFirst, 0, 0, 
+                self.hexitec.iTfgSetup(xdma_hexitec.SWFirst, 0, 0, 
                                        self.itfg_input_frames,
                                        self.itfg_output_frames,
                                        self.itfg_cycles)
@@ -326,7 +326,7 @@ class Hexitec():
                 self.hexitec.iTfgDisable()
         
         if not self.runInfo.hold_baseline:
-            self.hexitec.loadBaseline(self.chip_select, py_hexitec.UseShortBurst)
+            self.hexitec.loadBaseline(self.chip_select, xdma_hexitec.UseShortBurst)
         
         if not self.runInfo.no_clear:
             self.hexitec.clearHistAll()
@@ -336,7 +336,7 @@ class Hexitec():
         self.hexitec.udpResetCounts(False)
         self.hexitec.enableHist()
         if useItfg:
-            stat = py_hexitec.HexitecITfgStat()
+            stat = xdma_hexitec.HexitecITfgStat()
             prevStat      = 0xFFFFFFFF
             prevInpFrame  = 0xFFFFFFFF
             prevTimeFrame = 0xFFFFFFFF
@@ -492,7 +492,7 @@ class Hexitec():
         
 
         for settings_file in self.settings_files:
-            self.hexitec.loadSettingsHdf5(settings_file, self.chip_select, py_hexitec.HexitecSaveRestore.HexitecSaveRestore_All)
+            self.hexitec.loadSettingsHdf5(settings_file, self.chip_select, xdma_hexitec.HexitecSaveRestore.HexitecSaveRestore_All)
 
     def setup_cluster(self, clusterMode, clusterEnb):
 
@@ -505,13 +505,13 @@ class Hexitec():
     def setup_circular_writer(self, filename):
         
         if self.hexitec.supportsIrqs():
-            readout_mode = py_hexitec.CircWriterReadoutMode.IrqMemMapped
+            readout_mode = xdma_hexitec.CircWriterReadoutMode.IrqMemMapped
         else:
-            readout_mode = py_hexitec.CircWriterReadoutMode.PolledMemMapped
+            readout_mode = xdma_hexitec.CircWriterReadoutMode.PolledMemMapped
 
-        self.circ_writer = py_hexitec.CircularHdfWriter(self.hexitec, filename, -1, True, True, True)
+        self.circ_writer = xdma_hexitec.CircularHdfWriter(self.hexitec, filename, -1, True, True, True)
 
-        self.circ_writer.setupReadoutMode(readout_mode, 1, py_hexitec.CircWriterUdpTxOnlyMode.TxNormal)
+        self.circ_writer.setupReadoutMode(readout_mode, 1, xdma_hexitec.CircWriterUdpTxOnlyMode.TxNormal)
         self.circ_writer.start()
 
     def setup_send_udp(self):
@@ -579,7 +579,7 @@ class Hexitec():
         fineBursts = 30 if numBursts > 100 else 0
         framesPerBurstFine = 4
 
-        self.hexitec.loadBaseline(self.chip_select, py_hexitec.UseShortBurst)
+        self.hexitec.loadBaseline(self.chip_select, xdma_hexitec.UseShortBurst)
 
         for burst in range(numBursts):
             
@@ -596,7 +596,7 @@ class Hexitec():
                 else:
                     self.hexitec.setGlobReg(HexitecDefines.GLB_RUN_REG, HexitecDefines.RUN_RUN | HexitecDefines.RUN_DIS_RESET_FRAME_COUNT)
 
-                if self.hexitec.getGeneration() == py_hexitec.HexitecGenMhz:
+                if self.hexitec.getGeneration() == xdma_hexitec.HexitecGenMhz:
                     while self.hexitec.getGlobReg(HexitecDefines.GLB_SCOPE_STATUS) & HexitecDefines.SCOPE_STAT_RUNNING:
                         pass
                 else:

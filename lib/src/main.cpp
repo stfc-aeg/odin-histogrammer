@@ -22,11 +22,20 @@ namespace py = pybind11;
 //     return &list;
 // }
 
-PYBIND11_MODULE(py_hexitec, m) {
-    m.doc() = "Hexitec Python Binding";
+PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per_interpreter_gil()) {
+    m.doc() = R"pbdoc(
+        Hexitec Python Binding
+        ----------------------
+        )pbdoc";
     py::class_<XDmaHexitec> hexitec(m, "XDmaHexitec");
-    py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
+    // py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
     py::class_<HexitecITfgStat> HexitecITfgStat(m, "HexitecITfgStat");
+
+#ifdef VERSION_INFO
+    m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
+#else
+    m.attr("__version__") = "dev";
+#endif
 
     hexitec.def(py::init<int, int, int, int>())
         .def("getNumChips", &XDmaHexitec::getNumChips)
@@ -69,7 +78,7 @@ PYBIND11_MODULE(py_hexitec, m) {
         .def("setPixelMask", &XDmaHexitec::setPixelMask)
         .def("loadLinearityGainAscii", &XDmaHexitec::loadLinearityGainAscii)
         .def("loadLinearityAscii", &XDmaHexitec::loadLinearityAscii)
-        .def("loadLinearityGainHDF5", &XDmaHexitec::loadLinearityGainHDF5)
+        // .def("loadLinearityGainHDF5", &XDmaHexitec::loadLinearityGainHDF5)
         .def("loadCShareAscii", &XDmaHexitec::loadCShareAscii)
         .def("loadCShareAsciiMC", &XDmaHexitec::loadCShareAsciiMC)
         .def("loadEngMapAscii", &XDmaHexitec::loadEngMapAscii)
@@ -164,9 +173,9 @@ PYBIND11_MODULE(py_hexitec, m) {
         .def("getDataMoverOverRun", &XDmaHexitec::getDataMoverOverRun)
         .def("readDataMoverStream", &XDmaHexitec::readDataMoverStream)
         .def("getDataMoverUDPIndex", &XDmaHexitec::getDataMoverUDPIndex)
-        .def("saveSpectraAsc", &XDmaHexitec::saveSpectraAsc)
-        .def("saveSpectraDet", &XDmaHexitec::saveSpectraDet)
-        .def("saveSpectraHdf5", &XDmaHexitec::saveSpectraHdf5)
+        // .def("saveSpectraAsc", &XDmaHexitec::saveSpectraAsc)
+        // .def("saveSpectraDet", &XDmaHexitec::saveSpectraDet)
+        // .def("saveSpectraHdf5", &XDmaHexitec::saveSpectraHdf5)
         .def("getFlushedFrame", &XDmaHexitec::getFlushedFrame)
         .def("getBsubMaskName", &XDmaHexitec::getBsubMaskName)
         .def("getDiagnosticCounters", py::overload_cast<int, uint32_t *, uint32_t*>(&XDmaHexitec::getDiagnosticCounters))
@@ -183,19 +192,20 @@ PYBIND11_MODULE(py_hexitec, m) {
         .def("setClusterGradeReg", &XDmaHexitec::setClusterGradeReg)
         .def("setClusterGrade", &XDmaHexitec::setClusterGrade)
         .def("getClusterGrade", &XDmaHexitec::getClusterGrade)
-        .def("saveSettingsHdf5", &XDmaHexitec::saveSettingsHdf5)
-        .def("loadSettingsHdf5", &XDmaHexitec::loadSettingsHdf5)
+        // .def("saveSettingsHdf5", &XDmaHexitec::saveSettingsHdf5)
+        // .def("loadSettingsHdf5", &XDmaHexitec::loadSettingsHdf5)
         .def("writePixelMask", &XDmaHexitec::writePixelMask)
-        .def("readPixelMask", &XDmaHexitec::readPixelMask);
+        .def("readPixelMask", &XDmaHexitec::readPixelMask)
+        ;
 
-    circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
-        .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)
-        .def("setIpAddr", &CircularHdfWriter::setIpAddr)
-        .def("start", &CircularHdfWriter::start)
-        // .def("stop", &CircularHdfWriter::stop) not declared
-        .def("checkProgress", &CircularHdfWriter::checkProgress)
-        .def("getMappedOverRuns", &CircularHdfWriter::getMappedOverRuns)
-        .def("getSpectraOverRuns", &CircularHdfWriter::getSpectraOverRuns);
+    // circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
+    //     .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)
+    //     .def("setIpAddr", &CircularHdfWriter::setIpAddr)
+    //     .def("start", &CircularHdfWriter::start)
+    //     // .def("stop", &CircularHdfWriter::stop) not declared
+    //     .def("checkProgress", &CircularHdfWriter::checkProgress)
+    //     .def("getMappedOverRuns", &CircularHdfWriter::getMappedOverRuns)
+    //     .def("getSpectraOverRuns", &CircularHdfWriter::getSpectraOverRuns);
 
     HexitecITfgStat.def(py::init<>())
         .def_readwrite("status", &HexitecITfgStat::status)
@@ -272,19 +282,19 @@ PYBIND11_MODULE(py_hexitec, m) {
         .value("All",             HexitecSaveRestore::HexitecSaveRestore_All)
         .export_values();
 
-    py::enum_<CircWriterReadoutMode>(m, "CircWriterReadoutMode")
-        .value("Unknown", CircWriterReadoutMode::Unknown)
-        .value("PolledMemMapped", CircWriterReadoutMode::PolledMemMapped)
-        .value("IrqMemMapped", CircWriterReadoutMode::IrqMemMapped)
-        .value("AutoUDPThreadPerFrame", CircWriterReadoutMode::AutoUDPThreadPerFrame)
-        .value("AutoUDPThreadPerPacket", CircWriterReadoutMode::AutoUDPThreadPerPacket)
-        .value("AutoUDPNoTrailer", CircWriterReadoutMode::AutoUDPNoTrailer)
-        .export_values();
+    // py::enum_<CircWriterReadoutMode>(m, "CircWriterReadoutMode")
+    //     .value("Unknown", CircWriterReadoutMode::Unknown)
+    //     .value("PolledMemMapped", CircWriterReadoutMode::PolledMemMapped)
+    //     .value("IrqMemMapped", CircWriterReadoutMode::IrqMemMapped)
+    //     .value("AutoUDPThreadPerFrame", CircWriterReadoutMode::AutoUDPThreadPerFrame)
+    //     .value("AutoUDPThreadPerPacket", CircWriterReadoutMode::AutoUDPThreadPerPacket)
+    //     .value("AutoUDPNoTrailer", CircWriterReadoutMode::AutoUDPNoTrailer)
+    //     .export_values();
 
-    py::enum_<CircWriterUdpTxOnlyMode>(m, "CircWriterUdpTxOnlyMode")
-        .value("TxNormal", CircWriterUdpTxOnlyMode::TxNormal)
-        .value("TxOnlyLoop", CircWriterUdpTxOnlyMode::TxOnlyLoop)
-        .value("TxOnly1Pass", CircWriterUdpTxOnlyMode::TxOnly1Pass)
-        .export_values();
+    // py::enum_<CircWriterUdpTxOnlyMode>(m, "CircWriterUdpTxOnlyMode")
+    //     .value("TxNormal", CircWriterUdpTxOnlyMode::TxNormal)
+    //     .value("TxOnlyLoop", CircWriterUdpTxOnlyMode::TxOnlyLoop)
+    //     .value("TxOnly1Pass", CircWriterUdpTxOnlyMode::TxOnly1Pass)
+    //     .export_values();
 
 }

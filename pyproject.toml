@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hexitec"
+description = "odin-control adapter project for Hexitec Histogrammer"
+dynamic = ["version"]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: >=3.10",
+]
+dependencies = [
+    "xdma_hexitec @ file:./lib",
+    "odin-control @ git+https://github.com/odin-detector/odin-control@1.6.0#egg=odin-control"
+]
+
+readme = "README.md"
+
+[[project.authors]]
+email = "ashley.neaves@stfc.ac.uk"
+name = "Ashley Neaves"
+
+[project.optional-dependencies]
+odin_control = [
+    "odin-control @ git+https://github.com/odin-detector/odin-control@1.6.0#egg=odin-control"
+]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# Optional settings for setuptools_scm
+root = "."
+write_to = "src/hexitec/_version.py"
+version_scheme = "no-guess-dev"
+local_scheme = "node-and-date"

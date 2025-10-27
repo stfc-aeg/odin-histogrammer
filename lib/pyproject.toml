@@ -1,0 +1,13 @@
+[build-system]
+requires = ["scikit-build-core>=0.11", "pybind11>=3.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name="xdma_hexitec"
+description="Python wrapper for XDmaHexitec C++ class"
+version= "0.0.1"
+requires-python = ">=3.10"
+
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"

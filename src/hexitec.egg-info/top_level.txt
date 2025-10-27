@@ -1,2 +1,0 @@
-hexitec
-py_hexitec
