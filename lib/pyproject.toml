@@ -5,9 +5,12 @@ build-backend = "scikit_build_core.build"
 [project]
 name="xdma_hexitec"
 description="Python wrapper for XDmaHexitec C++ class"
-version= "0.0.1"
+version= "0.0.2"
 requires-python = ">=3.10"
+dependencies = ["pybind11"]
 
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
+build-dir = "build/{wheel_tag}"
+build.verbose = true

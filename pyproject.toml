@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm>=8", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools>=64", "setuptools_scm>=8", "wheel", "scikit_build_core"]
+build-backend = "scikit_build_core.setuptools.build_meta"
 
 [project]
 name = "hexitec"
@@ -13,8 +13,8 @@ classifiers = [
     "Programming Language :: Python :: >=3.10",
 ]
 dependencies = [
-    "xdma_hexitec @ file:./lib",
-    "odin-control @ git+https://github.com/odin-detector/odin-control@1.6.0#egg=odin-control"
+    "odin-control @ git+https://github.com/odin-detector/odin-control",
+    "xdma_hexitec @ file:./lib"
 ]
 
 readme = "README.md"

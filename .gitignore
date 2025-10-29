@@ -6,3 +6,5 @@
 *.h5
 *.egg-info
 *_version.py
+build/
+CMakeCache.txt

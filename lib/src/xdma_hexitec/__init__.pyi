@@ -16,3 +16,8 @@ class XDmaHexitec:
         """
         Return the total number of chips in the Hexitec device
         """
+
+    def getNumChipsCols(self) -> int:
+        """
+        Return the number of chips in a column on the sensor
+        """
