@@ -12,67 +12,34 @@ project(
 # Find pybind11 and Python
 find_package(pybind11 CONFIG REQUIRED)
 
+# Appends the cmake modules path inside the MAKE_MODULE_PATH variable
+# which stores the directories of additonal CMake modules (ie findxdma_hexitec.cmake)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
+
+# ensure the env variable, if it exists, is set as a local CMAKE variable
 if(NOT DET_SOFTWARE)
   set(DET_SOFTWARE $ENV{DET_SOFTWARE})  
 endif()
 
 message(STATUS "DET_SOFTWARE set: " ${DET_SOFTWARE})
 
-find_path(XDMA_HEXITEC_INCLUDE_DIR
-    NAMES
-      xdma_hexitec.h
-    PATHS
-      ${DET_SOFTWARE}/libs/include
-      ${DET_SOFTWARE}/none_vme/hexitec/include
-      
-    REQUIRED
-)
+find_package(xdma_hexitec REQUIRED)
+find_package(HDF5 COMPONENTS C HL)
 
-find_path(HDF5_CPP_INCLUDE_DIR
-    NAMES
-      H5Cpp.h
-    PATHS
-      /usr/include/hdf5/serial
-      ${DET_SOFTWARE}/libs/include
-      ${DET_SOFTWARE}/libs/include-hdf5
-)
+if (HDF5_FOUND)
+  message(STATUS "HDF5 include files:  " ${HDF5_INCLUDE_DIRS})
+  message(STATUS "HDF5 libs:           " ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES})
+  message(STATUS "HDF5 defs:           " ${HDF5_DEFINITIONS})
+ENDIF(HDF5_FOUND)
 
-find_library(XDMA_HEXITEC_LIB
-    NAMES
-      xdma_hexitec
-    PATHS
-      ${DET_SOFTWARE}/libs/libs.linux.x86_64/lib
-      ${DET_SOFTWARE}/none_vme/hexitec/lib/objs.x86_64
-    REQUIRED
-)
-
-find_library(HDF5_LIB
-    NAMES
-      hdf5_hl
-    PATHS
-      ${DET_SOFTWARE}/libs/libs.linux.x86_64/lib
-      ${DET_SOFTWARE}/libs/src/HDF5/hdf5-1.14.4-3/hdf5/lib
-)
-get_filename_component(XDMA_HEXITEC_LIB_DIR ${XDMA_HEXITEC_LIB} PATH)
-get_filename_component(HDF5_LIB_DIR ${HDF5_LIB} PATH)
-
-set(INCLUDE_DIRS ${XDMA_HEXITEC_INCLUDE_DIR} ${HDF5_CPP_INCLUDE_DIR})
-set(LINK_DIRS ${XDMA_HEXITEC_LIB_DIR} ${HDF5_LIB_DIR})
-
-message(STATUS "INCLUDE DIRS: ${INCLUDE_DIRS}")
-message(STATUS "LIB DIRS: ${LINK_DIRS}")
-
-link_directories(${LINK_DIRS})
-
-include_directories(${INCLUDE_DIRS})
-
-
+include_directories(${XDMA_HEXITEC_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
 
 # Add a library using FindPython's tooling (pybind11 also provides a helper like
 # this)
 python_add_library(_core MODULE src/main.cpp WITH_SOABI)
-target_link_libraries(_core PRIVATE xdma_hexitec detfile hdf5_hl img_mod rt)
 target_link_libraries(_core PRIVATE pybind11::headers)
+target_link_libraries(_core PUBLIC ${XDMA_HEXITEC_LIBRARIES} ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES})
+
 
 # This is passing in the version as a define just as an example
 target_compile_definitions(_core PRIVATE VERSION_INFO=${PROJECT_VERSION})
