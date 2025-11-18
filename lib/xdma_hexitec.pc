@@ -1,0 +1,9 @@
+includedir=/usr/include
+libdir=/usr/lib
+
+Name: xdma_hexitec
+Description: Hexitec Histogrammer API utilising XDMA for register access
+Version: 0.0.0
+Requires:
+Libs: -L${libdir} -lxdma_hexitec
+Cflags: -I${includedir}

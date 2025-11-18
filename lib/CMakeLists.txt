@@ -17,18 +17,20 @@ find_package(pybind11 CONFIG REQUIRED)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 # ensure the env variable, if it exists, is set as a local CMAKE variable
-if(NOT DET_SOFTWARE)
-  set(DET_SOFTWARE $ENV{DET_SOFTWARE})  
+if(DEFINED ENV{DET_SOFTWARE})
+  set(DET_SOFTWARE $ENV{DET_SOFTWARE})
+  message(STATUS "DET_SOFTWARE set: " ${DET_SOFTWARE})
 endif()
 
-message(STATUS "DET_SOFTWARE set: " ${DET_SOFTWARE})
-
 find_package(xdma_hexitec REQUIRED)
-find_package(HDF5 COMPONENTS C HL)
+find_package(HDF5 COMPONENTS C HL CXX REQUIRED)
 
 if (HDF5_FOUND)
-  message(STATUS "HDF5 include files:  " ${HDF5_INCLUDE_DIRS})
-  message(STATUS "HDF5 libs:           " ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES})
+  message(STATUS "HDF5 include files:  " ${HDF5_INCLUDE_DIRS} " AND " ${HDF5_C_INCLUDE_DIRS})
+  message(STATUS "HDF5 libs:           " ${HDF5_LIBRARIES})
+  message(STATUS "HDF5 HL Libs:        " ${HDF5_HL_LIBRARIES})
+  message(STATUS "HDF5 C Libs:         " ${HDF5_C_LIBRARIES} " AND " ${HDF5_C_HL_LIBRARIES})
+  message(STATUS "HDF5 CXX Libs        " ${HDF5_CXX_LIBRARIES} " AND " ${HDF5_CXX_HL_LIBRARIES})
   message(STATUS "HDF5 defs:           " ${HDF5_DEFINITIONS})
 ENDIF(HDF5_FOUND)
 
@@ -38,7 +40,12 @@ include_directories(${XDMA_HEXITEC_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
 # this)
 python_add_library(_core MODULE src/main.cpp WITH_SOABI)
 target_link_libraries(_core PRIVATE pybind11::headers)
-target_link_libraries(_core PUBLIC ${XDMA_HEXITEC_LIBRARIES} ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES})
+target_link_libraries(_core PUBLIC ${XDMA_HEXITEC_LIBRARIES}
+                                   ${HDF5_LIBRARIES} 
+                                   ${HDF5_HL_LIBRARIES}
+                                   ${HDF5_C_LIBRARIES}
+                                   ${HDF5_C_HL_LIBRARIES}
+                                   ${HDF5_CXX_LIBRARIES})
 
 
 # This is passing in the version as a define just as an example

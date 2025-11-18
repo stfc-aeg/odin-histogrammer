@@ -24,7 +24,10 @@ endif()
 find_package(PkgConfig)
 if(PkgConfig_FOUND)
     message("using Pkgconfig")
+    set(ENV{PKG_CONFIG_PATH} ${CMAKE_CURRENT_SOURCE_DIR} ${PKG_CONFIG_PATH})
     pkg_check_modules(PC_XDMA_HEXITEC xdma_hexitec)
+    message("LIB DIRS: ${PC_XDMA_HEXITEC_LIBDIR} OR ${PC_XDMA_HEXITEC_LIBRARY_DIRS}")
+    message("INC DIRS: ${PC_XDMA_HEXITEC_INCLUDEDIR} OR ${PC_XDMA_HEXITEC_INCLUDE_DIRS}")
 endif(PkgConfig_FOUND)
 
 
@@ -32,19 +35,30 @@ find_path(XDMA_HEXITEC_INCLUDE_DIRS
     NAMES
         xdma_hexitec.h
     PATHS
-        ${DET_SOFTWARE_INCLUDE_DIR}
         ${PC_XDMA_HEXITEC_INCLUDEDIR}
         ${PC_XDMA_HEXITEC_INCLUDE_DIRS}
+        ${DET_SOFTWARE_INCLUDE_DIR}
 )
 
-find_library(XDMA_HEXITEC_LIBRARIES
+find_library(XDMA_HEXITEC_LIBRARY
     NAMES
         xdma_hexitec
     PATHS
-        ${DET_SOFTWARE_LIBS_DIR}
         ${PC_XDMA_HEXITEC_LIBDIR}
         ${PC_XDMA_HEXITEC_LIBRARY_DIRS}
+        ${DET_SOFTWARE_LIBS_DIR}
 )
+
+find_library(DETFILE_LIBRARY
+    NAMES
+        detfile
+    PATHS
+        ${PC_XDMA_HEXITEC_LIBDIR}
+        ${PC_XDMA_HEXITEC_LIBRARY_DIRS}
+        ${DET_SOFTWARE_LIBS_DIR}
+)
+
+set(XDMA_HEXITEC_LIBRARIES ${XDMA_HEXITEC_LIBRARY} ${DETFILE_LIBRARY})
 
 # handle the QUIETLY and REQUIRED arguments and set XDMA_HEXITEC_FOUND to TRUE
 # if all listed variables are TRUE
@@ -56,7 +70,7 @@ find_package_handle_standard_args(xdma_hexitec
     XDMA_HEXITEC_INCLUDE_DIRS
 )
 
-mark_as_advanced(XDMA_HEXITEC_LIBRARIES XDMA_HEXITEC_INCLUDE_DIRS)
+mark_as_advanced(XDMA_HEXITEC_LIBRARIES XDMA_HEXITEC_INCLUDE_DIRS XDMA_HEXITEC_LIBRARY DETFILE_LIBRARY)
 
 if(XDMA_HEXITEC_FOUND)
     message("xdma_hexitec found")
