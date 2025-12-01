@@ -1,4 +1,6 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/native_enum.h>
+#include <pybind11/iostream.h>
 #include "xdma_hexitec.h"
 // #include "circular_hdf_writer.h"
 
@@ -37,7 +39,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     m.attr("__version__") = "dev";
 #endif
 
-    hexitec.def(py::init<int, int, int, int>())
+    hexitec.def(py::init<int, int, int, int>(), py::call_guard<py::scoped_ostream_redirect, py::scoped_estream_redirect>())
         .def("getNumChips", &XDmaHexitec::getNumChips)
         .def("getNumChipCols", &XDmaHexitec::getNumChipCols)
         .def("getNumChipRows", &XDmaHexitec::getNumChipRows)
@@ -60,7 +62,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def("getChipReg", &XDmaHexitec::getChipReg)
         .def("writeGlobRegs", &XDmaHexitec::writeGlobRegs)
         .def("readGlobRegs", &XDmaHexitec::readGlobRegs)
-        .def("setGlobReg", &XDmaHexitec::setGlobReg)
+        .def("setGlobReg", &XDmaHexitec::setGlobReg, "Set the value of a global register", py::arg("offset"), py::arg("value"))
         .def("getGlobReg", &XDmaHexitec::getGlobReg)
         .def("getGlobReg64", &XDmaHexitec::getGlobReg64)
         .def("setPixelLUT", &XDmaHexitec::setPixelLUT)
@@ -111,6 +113,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def("setLowerTriggerThres", &XDmaHexitec::setLowerTriggerThres)
         .def("setLinearityRaw", &XDmaHexitec::setLinearityRaw)
         .def("setLinearityOne", &XDmaHexitec::setLinearityOne)
+        .def("linearityAddOffset", &XDmaHexitec::linearityAddOffset)
         .def("setClusterMode", &XDmaHexitec::setClusterMode)
         .def("setCShareMode", &XDmaHexitec::setCShareMode)
         .def("setClusterTypes", &XDmaHexitec::setClusterTypes)
@@ -178,7 +181,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         // .def("saveSpectraHdf5", &XDmaHexitec::saveSpectraHdf5)
         .def("getFlushedFrame", &XDmaHexitec::getFlushedFrame)
         .def("getBsubMaskName", &XDmaHexitec::getBsubMaskName)
-        .def("getDiagnosticCounters", py::overload_cast<int, uint32_t *, uint32_t*>(&XDmaHexitec::getDiagnosticCounters))
+        // .def("getDiagnosticCounters", py::overload_cast<int, uint32_t *, uint32_t*>(&XDmaHexitec::getDiagnosticCounters))
         .def("getDiagnosticCounters", py::overload_cast<uint32_t *, uint32_t*>(&XDmaHexitec::getDiagnosticCounters))
         .def("writeIrqEnable", &XDmaHexitec::writeIrqEnable)
         .def("getIrqEnable", &XDmaHexitec::getIrqEnable)
@@ -196,6 +199,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         // .def("loadSettingsHdf5", &XDmaHexitec::loadSettingsHdf5)
         .def("writePixelMask", &XDmaHexitec::writePixelMask)
         .def("readPixelMask", &XDmaHexitec::readPixelMask)
+        .def_readwrite("m_debug", &XDmaHexitec::m_debug)
         ;
 
     // circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
@@ -213,18 +217,20 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def_readwrite("timeFrame", &HexitecITfgStat::status)
         .def_readwrite("cycles", &HexitecITfgStat::status);
 
-    py::enum_<HexitecGeneration>(m, "HexitecGeneration")
+    py::native_enum<HexitecGeneration>(m, "HexitecGeneration", "enum.IntEnum")
         .value("HexitecGenHexitec", HexitecGeneration::HexitecGenHexitec)
         .value("HexitecGenMHz", HexitecGeneration::HexitecGenMHz)
-        .export_values();
+        .export_values()
+        .finalize();
 
-    py::enum_<HexitecUdpRxConnection>(m, "HexitecUdpRxConnection")
+    py::native_enum<HexitecUdpRxConnection>(m, "HexitecUdpRxConnection", "enum.IntEnum")
         .value("Normal",   HexitecUdpRxConnection::Normal)
         .value("Loopback", HexitecUdpRxConnection::Loopback)
         .value("FromHost", HexitecUdpRxConnection::FromHost)
-        .export_values();
+        .export_values()
+        .finalize();
 
-    py::enum_<HexitecITfgMode>(m, "HexitecITfgMode")
+    py::native_enum<HexitecITfgMode>(m, "HexitecITfgMode", "enum.IntEnum")
         .value("Immediate",     HexitecITfgMode::Immediate)
         .value("SWFirst",       HexitecITfgMode::SWFirst)
         .value("SWCountedEach", HexitecITfgMode::SWCountedEach)
@@ -234,33 +240,38 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .value("HWCountedEach", HexitecITfgMode::HWCountedEach)
         .value("HWIncEach",     HexitecITfgMode::HWIncEach)
         .value("HWGated",       HexitecITfgMode::HWGated)
-        .export_values();
+        .export_values()
+        .finalize();
 
-    py::enum_<XDmaHexitec::MappedView>(hexitec, "MappedView")
+    py::native_enum<XDmaHexitec::MappedView>(hexitec, "MappedView", "enum.IntEnum")
         .value("MappedViewSpectra", XDmaHexitec::MappedView::MappedViewSpectra)
         .value("MappedViewMapped8", XDmaHexitec::MappedView::MappedViewMapped8)
         .value("MappedViewMapped16", XDmaHexitec::MappedView::MappedViewMapped16)
-        .export_values();
+        .export_values()
+        .finalize();
     
-    py::enum_<XDmaHexitec::AutonomousMode>(hexitec, "AutonomousMode")
+    py::native_enum<XDmaHexitec::AutonomousMode>(hexitec, "AutonomousMode", "enum.IntEnum")
         .value("AutoOff", XDmaHexitec::AutonomousMode::AutoOff)
         .value("AutoTriggerRead", XDmaHexitec::AutonomousMode::AutoTriggerRead)
         .value("AutoTriggerReadAndClear", XDmaHexitec::AutonomousMode::AutoTriggerReadAndClear)
-        .export_values();
+        .export_values()
+        .finalize();
 
-    py::enum_<XDmaHexitec::FarmIndexMode>(hexitec, "FarmIndexMode")
+    py::native_enum<XDmaHexitec::FarmIndexMode>(hexitec, "FarmIndexMode", "enum.IntEnum")
         .value("FarmIndexIncEOF", XDmaHexitec::FarmIndexMode::FarmIndexIncEOF)
         .value("FarmIndexIncEOP", XDmaHexitec::FarmIndexMode::FarmIndexIncEOP)
         .value("FarmIndexFromTF", XDmaHexitec::FarmIndexMode::FarmIndexFromTF)
-        .export_values();
+        .export_values()
+        .finalize();
 
-    py::enum_<HexitecLoadSaveBaseLine>(m, "HexitecLoadSaveBaseLine")
+    py::native_enum<HexitecLoadSaveBaseLine>(m, "HexitecLoadSaveBaseLine", "enum.IntEnum")
         .value("Request", HexitecLoadSaveBaseLine::Request)
         .value("RequestAndWait", HexitecLoadSaveBaseLine::RequestAndWait)
         .value("UseShortBurst", HexitecLoadSaveBaseLine::UseShortBurst)
-        .export_values();
+        .export_values()
+        .finalize();
 
-    py::enum_<HexitecSaveRestore>(m, "HexitecSaveRestore")
+    py::native_enum<HexitecSaveRestore>(m, "HexitecSaveRestore", "enum.IntEnum")
         .value("AbsThresPos",     HexitecSaveRestore::HexitecSaveRestore_AbsThresPos)
         .value("AbsThresNeg",     HexitecSaveRestore::HexitecSaveRestore_AbsThresNeg)
         .value("AbsThres",        HexitecSaveRestore::HexitecSaveRestore_AbsThres)
@@ -280,9 +291,10 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .value("OutputPixelMask", HexitecSaveRestore::HexitecSaveRestore_OutputPixelMask)
         .value("RequireAll",      HexitecSaveRestore::HexitecSaveRestore_RequireAll)
         .value("All",             HexitecSaveRestore::HexitecSaveRestore_All)
-        .export_values();
+        .export_values()
+        .finalize();
 
-    // py::enum_<CircWriterReadoutMode>(m, "CircWriterReadoutMode")
+    // py::native_enum<CircWriterReadoutMode>(m, "CircWriterReadoutMode")
     //     .value("Unknown", CircWriterReadoutMode::Unknown)
     //     .value("PolledMemMapped", CircWriterReadoutMode::PolledMemMapped)
     //     .value("IrqMemMapped", CircWriterReadoutMode::IrqMemMapped)
@@ -291,7 +303,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     //     .value("AutoUDPNoTrailer", CircWriterReadoutMode::AutoUDPNoTrailer)
     //     .export_values();
 
-    // py::enum_<CircWriterUdpTxOnlyMode>(m, "CircWriterUdpTxOnlyMode")
+    // py::native_enum<CircWriterUdpTxOnlyMode>(m, "CircWriterUdpTxOnlyMode")
     //     .value("TxNormal", CircWriterUdpTxOnlyMode::TxNormal)
     //     .value("TxOnlyLoop", CircWriterUdpTxOnlyMode::TxOnlyLoop)
     //     .value("TxOnly1Pass", CircWriterUdpTxOnlyMode::TxOnly1Pass)

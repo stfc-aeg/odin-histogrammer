@@ -1,0 +1,362 @@
+import logging
+import sys
+import os
+
+from typing import Literal, TypeVar, NamedTuple
+
+from xdma_hexitec import XDmaHexitec, defines
+
+from .controller import HistogramException
+
+from contextlib import redirect_stderr, redirect_stdout
+
+from collections.abc import Callable
+
+ConnectionStatus = Literal["disconnected", "connected", "configuring", "running", "completed"]
+T = TypeVar("T")
+
+class InternalLibException(HistogramException):
+    """Exception that translates a RuntimeError thrown by the Pybind11 module into a python exception"""
+
+
+class Counters(NamedTuple):
+    """Data Class defining the various counters for a Run"""
+
+    frameCount: int
+    """Number of frames from the detector"""
+
+    rawHitCount: int
+    """Total number of Raw Hits"""
+
+    inputTimeFrame: int
+    """Total number of time frames from UDP"""
+
+    finishedTimeFrame: int
+    """Total number of Finished (output) time frames"""
+
+
+
+
+class histogrammer():
+    """
+    Histogram Handling class, providing a bridge between the Adapter/Controller of Odin Control
+    and the interface provided by PyBind11 to William's code
+
+    Mainly designed to provide methods that can connect to a parameter tree
+    """
+    
+    def __init__(self, options: dict[str, str]) -> None:
+        
+        self.hexitec: XDmaHexitec = None
+
+        self.status: ConnectionStatus = "disconnected"
+        
+        self.useQdma = options.get("useqdma", "").lower() in ["true", "1", "yes"]
+        self.busNum = int(options.get("busnum", 0))
+        self.devNum = int(options.get("devnum", 0))
+        self.funcNum = int(options.get("funcnum", 0))
+
+        self.chip_select = -1  # -1 applies changes to all chips
+        self.stream_select = -1  # -1 applies to all data streams
+
+
+        self.inter_frame_gap = 4095
+
+        self.frame_counters = Counters()
+
+        #TODO: there will be More Config Options, I'm sure
+
+    def _run_method(self, method: Callable[..., T], *args, **kwargs) -> T:
+        """Run the provided Pybind11 Method, redirecting all stdout to devnull and converting
+        RuntimeErrors into HistogramExceptions
+
+        TODO: Rather than just redirect to devnull, provide means to redirect to logger or other file
+
+        :param method: the method to run wrapped in the redirection handler
+        :param args:   the positional arguments to pass to the method
+        :param kwargs: the keyword arguments to pass to the method
+
+        :returns: The return value of the Method. Most methods return None, but some return status codes or requested values
+
+        :raises InternalLibException: If the method raises an error, it is converted into a InternalLibException
+        :raises HistogramException: Raised if the method cannot be run, either due to the current run state or the device not being connected
+        """
+
+        if self.hexitec is None and method.__name__ != "XDmaHexitec":
+            # can't run a method on a class not yet initalised (unless that method is the initalisation in question)
+            raise HistogramException("Cannot run method {}: Histogrammer not Initialised".format(method.__name__))
+        try:
+            with redirect_stdout(open(os.devnull, "w")), redirect_stderr(open(os.devnull, "w")):
+                return method(*args, **kwargs)
+        except RuntimeError as e:
+            logging.error(e)
+            raise InternalLibException("{}".format(e))
+
+    def connect(self):
+        try:
+            self.hexitec = self._run_method(XDmaHexitec, self.useQdma, self.busNum, self.devNum, self.funcNum)
+
+            self.status = "connected"
+            self.initialise()
+        except (RuntimeError, HistogramException):
+            self.status = "disconnected"
+            logging.error("Unable to connected to Device. Check provided Info:")
+            logging.error("BusNum: %d, DevNum: %d, FuncNum: %d", self.busNum, self.devNum, self.funcNum)
+            raise HistogramException("Unable to connect to Device. Check PCI device numbers")
+
+    def disconnect(self):
+        # additional clearup should almost certainly be done. Set the turn off run bit, for a start?
+        self.hexitec = None  # garbage collection should cleanup the device
+        self.status = "disconnected"
+
+    def initialise(self):
+        """Initialise various values and Lookup Tables to the initial defaults"""
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)  # turn off run bit to stop any acquisition
+        self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_EDGE_POS_RECIP, self.stream_select)
+        self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_NEG_NEB_RECIP, self.stream_select)
+        self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_L_POS_RECIP, self.stream_select)
+        self._run_method(self.hexitec.initCShareLUTs, self.chip_select, self.stream_select)
+
+        self._run_method(self.hexitec.initPixelMask, self.chip_select)
+        
+        self._run_method(self.hexitec.setLinearityOne, self.chip_select, 0.0)
+
+    def start_run(self):
+        """Make the histogrammer begin outputting Histograms"""
+        #TODO: other setup that might have to happen prior to enabling the run?
+        
+        # reset the udp packet counters
+        self.hexitec.udpResetCounts(False)
+        self.hexitec.enableHist()
+
+        # set the run reg to 1 to start producing histograms
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 1)
+
+    def stop_run(self):
+
+        # making sure to read the current frame counts before turning off the run bit
+        # as turning off the bit flushes the histograms and we lose this information
+        self.frame_counters = self.getFrameCounts()
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
+
+    def setBaseline(self, mask: defines.BaselineMask, divide: defines.BaselineDivide, enableDither: bool):
+        """Set the Baseline Mode"""
+        # if the mask is set to fixed, we dont use the absolute trigger
+        useAbsTrig = not (mask == defines.BaselineMask.BSUB_MASK_FIXED)
+        try:
+            self.hexitec.setBaselineMode(self.chip_select, mask, divide, enableDither, useAbsTrig)
+        except RuntimeError as e:
+            logging.error("Error Setting Baseline: %s", e)
+            raise HistogramException("{}".format(e))
+    
+    def setClusterMode(self, clusterMode: defines.ClusterMode, autoTrigMode: defines.AutoTrigMode):
+        """Sets the cluster Mode and the auto triggering.
+        
+        :param clusterMode: The mode which describes how and which clusters are chosen
+        :param autoTrigMode: The Auto Triggering mode for pixels in frames.
+        """
+
+        self._run_method(self.hexitec.setClusterMode, self.chip_select, clusterMode, autoTrigMode)
+
+    def setClusterTypes(self, clusterType: defines.ClusterEnable = defines.ClusterEnable.CLUSTER_ENB_ALL):
+        """Sets the cluster pattern type(s).
+        
+        :param clusterType: A Flag of all cluster patterns to enable, bitwise ORd together. If this value is 0, it is overwritten to the default that enables all patterns
+        """
+
+        if clusterType not in defines.ClusterEnable:
+            clusterType = defines.ClusterEnable.CLUSTER_ENB_ALL
+
+        self._run_method(self.hexitec.setClusterTypes, self.chip_select, clusterType)
+
+    def setTriggerThreshold(self, selectThreshold: Literal["absolute", "main" , "lower"],
+                            cols: tuple[int, int],
+                            rows: tuple[int, int],
+                            threshold: tuple[int, int],
+                            enable: bool):
+        """Set the selected trigger threshold values for the specified rows and columns
+        
+        :param selectThreshold: Select which trigger threshold to set
+        :param cols: The range of columns the threshold is applied
+        :param rows: The range of Rows the threshold is applied
+        :param threshold: The lower and upper threshold value for this trigger.
+            For the Absolute threshold, this is a lower and upper value.
+            For the other thresholds, this is a negative and a positive value.
+        :param enable: Enables the trigger for the pixel. Only applicable to the Main Threshold.
+        """
+
+        if selectThreshold == "absolute":
+            # setting the absolute trigger threshold
+            self._run_method(self.hexitec.setAbsTriggerThres,
+                             self.chip_select,
+                             cols[0], cols[1],
+                             rows[0], rows[1],
+                             max(threshold),
+                             min(threshold))
+        elif selectThreshold == "main":
+            # setting the main trigger threshold
+            self._run_method(self.hexitec.setMainTriggerThres,
+                             self.chip_select,
+                             cols[0], cols[1],
+                             rows[0], rows[1],
+                             max(threshold),
+                             min(threshold),
+                             enable)
+        elif selectThreshold == "lower":
+            self._run_method(self.hexitec.setLowerTriggerThres,
+                             self.chip_select,
+                             cols[0], cols[1],
+                             rows[0], rows[1],
+                             max(threshold),
+                             min(threshold))
+        else:
+            raise HistogramException("{} not a valid Threshold Option".format(selectThreshold))
+    
+    def addLinearityOffset(self, offset: float = 0.0):
+        """Adds a fixed offset to the linearity correction. Must be done after anything else
+        that may change the linearity corrections, as loading new linearity will overwrite this addition
+        
+        :param offset: the offset to correct values by, defaults to 0
+        """
+
+        self._run_method(self.hexitec.linearityAddOffset,
+                         self.chip_select,
+                         offset)
+
+    def setHistFormat(self, numBins: defines.NumBins, runMode: defines.RunMode, mappedMode: defines.MappedMode):
+        """Set the Format of the Histograms. Be aware, not all combinations of numBins, runMode, and mappedMode are permitted.
+        
+        :param numBins: Enum value that defines the number of energy bins
+        :param runMode: Enum value that defines the run mode of the histogrammer, specifying what data to include
+        :param mappedMode: Enum value that defines the Mapped Mode of the histogram.
+
+        :raises HistogramException: If the combination of numBins and runMode is invalid
+        """
+
+        histFormat = (runMode << 3) | numBins
+        self._run_method(self.hexitec.setHistFormat,
+                         self.chip_select,
+                         histFormat, mappedMode)
+
+    def setupUdpReceive(self, srcIP: int, destIP: int,
+                 srcPort: int, destPort: int,
+                 connectType: defines.UdpRxConnection):
+        """Setup the UDP cores to receive data
+        
+        :param srcIP: IP address of the data source (Likely the Alpha Data card)
+        :param destIP: IP address the data is sent to (the address of the Histogrammer module)
+        :param srcPort: Port number of the data source
+        :param destPort: Port number of the histogrammer
+        :param connectType: The type of connection, Normal, Loopback, or FromHost
+        """
+
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
+        self._run_method(self.hexitec.udpRxSetup,
+                         srcIP, destIP,
+                         srcPort, destPort,
+                         connectType)
+        
+        # stop any running data movers
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
+
+    def setupUdpSend(self, srcIP: int, destIP: int,
+                     srcPort: int, destPort: int,
+                     numThreads: int, mappedMode: defines.MappedMode):
+        """Setup the UDP cores to send Histograms to a server (usually an Odin Data instance)
+        
+        :param srcIP: THe IP address of the Histogrammer
+        :param destIP: The IP address of the destination server, to send histograms to
+        :param srcPort: Port number of the Histogrammer
+        :param destPort: Port number of the server. This will be the first port number if multiple threads are used
+        :param numThreads: Number of UDP threads to use. Each will send to a sequential Port Number in a round robin. Must be a power 2 value
+        :param mappedMode: Enum value that defines the Mapped Mode of the histogram.
+        """
+
+        
+        if not (numThreads & (numThreads - 1) == 0 and numThreads > 0 and numThreads < (1<<8)):
+            raise HistogramException("Invalid Number of UDP RX Threads: {}. Must be power of 2".format(numThreads))
+
+
+        farmBase = 0
+        timeframe_start = -1  #TODO: this resets the start number of the timeframes every time. May not be the intended method
+        farmMask = numThreads - 1
+
+        if mappedMode == defines.MappedMode.INTERLEAVE:
+            numThreads = numThreads * 2  # mapped interleave mode requires threads for spectra and mapped
+
+        self._run_method(self.hexitec.udpTxSetup,
+                         srcIP, destIP,
+                         srcPort, destPort,
+                         0, numThreads,
+                         True, self.inter_frame_gap, False)
+        
+        # trailer mode is not disabled (becasue False), but the default values are set by this method
+        self.hexitec.disableDataMoverUDPTrailer(False, 0)
+
+        autoMode = defines.AutoMode.TRIGGER_READ_CLEAR
+        farmIndex = defines.FarmIndexMode.FROM_TF
+
+        #TODO: check for no_clear/UDP_dist to modify autoMode/farmIndex
+
+        # if mapped mode is set to allow spectra (either mappedMode OFF or mappedMode INTERLEAVE)
+        if mappedMode != defines.MappedMode.ONLY:
+            # setup data mover farm mode for Spectra
+            logging.debug("Setting up UDP DataMover for Spectra Output")
+            self._run_method(self.hexitec.startDataMoverStreamUDP, 
+                             timeframe_start, defines.MappedView.SPECTRA, False,
+                             True, 0, farmMask, farmBase, autoMode, farmIndex)
+            farmBase = farmBase + farmMask + 1
+        
+        # if mapped mode is set to allow Mapped output (ONLY or INTERLEAVE)
+        if mappedMode != defines.MappedMode.OFF:
+            logging.debug("Setting up UDP Datamover for Mapped Output")
+            self._run_method(self.hexitec.startDataMoverStreamUDP,
+                             timeframe_start, defines.MappedView.MAPPED16, False,
+                             True, 0, farmMask, farmBase, autoMode, farmIndex)
+
+    def getFrameCounts(self) -> Counters:
+        """Return the current count of frames for an in-progress run.
+        Reading these values after a run has been stopped will return invalid values.
+
+        :return counters.frameCount: Total frames from the detector
+        :return counters.rawHitCount: Total number of raw hits from the detector
+        :return counters.inputTimeFrame: Total number of Timeframes from the UDP input
+        :return counters.finishedTimeFrame: Count of Finished Time Frames that have been output, or -1 if invalid
+        """
+        counters = Counters()
+
+        frameCount = []
+        rawCount = []
+
+        # self.hexitec.getDiagnosticCounters(frameCount, rawCount)
+        # passing an array pointer does not appear to work. Thankfully, all the getDiagnositcCounters
+        # method does is the for loop below
+
+        for i in range(self.hexitec.getNumChips()):
+            frameCount.append(self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_FRAME_COUNT0 + (2*i)))
+            rawCount.append(self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RAW_HIT_COUNT0 + (2*i)))
+
+        counters.frameCount = frameCount[0]
+        counters.rawHitCount = sum(rawCount)
+
+
+        frameToken = self.hexitec.getFlushedFrame()
+        inputTimeFrame = self.hexitec.getInpTimeFrame(0)
+
+        # mask to get the count from the register value
+        counters.inputTimeFrame = inputTimeFrame & defines.TimeFrameMasks.INPUT_COUNT
+
+        # check valid bit of frameToken
+        if frameToken & defines.TimeFrameMasks.FLUSHED_VALID:
+            counters.finishedTimeFrame = frameToken & defines.TimeFrameMasks.FLUSHED_COUNT
+        else:
+            counters.finishedTimeFrame = -1
+
+        return counters
+
+        
+        
+
+
+

@@ -5,7 +5,9 @@ from ._core import XDmaHexitec, HexitecITfgStat
 from ._core import (HexitecGeneration, HexitecUdpRxConnection, HexitecITfgMode,
                     HexitecLoadSaveBaseLine, HexitecSaveRestore)
 
+from . import defines
+
 __all__ = ["__doc__", "__version__", 
            "XDmaHexitec", "HexitecITfgStat",
            "HexitecGeneration", "HexitecUdpRxConnection", "HexitecITfgMode", "HexitecLoadSaveBaseLine",
-           "HexitecSaveRestore"]
+           "HexitecSaveRestore", "defines"]
