@@ -1,12 +1,12 @@
 import logging
-import sys
 import os
 
 from typing import Literal, TypeVar, NamedTuple
+from tornado.ioloop import PeriodicCallback
 
-from xdma_hexitec import XDmaHexitec, defines
+from xdma_hexitec import XDmaHexitec, defines, HexitecUdpRxConnection
 
-from .controller import HistogramException
+from .base_controller import BaseError
 
 from contextlib import redirect_stderr, redirect_stdout
 
@@ -15,35 +15,36 @@ from collections.abc import Callable
 ConnectionStatus = Literal["disconnected", "connected", "configuring", "running", "completed"]
 T = TypeVar("T")
 
-class InternalLibException(HistogramException):
+class InternalLibException(BaseError):
     """Exception that translates a RuntimeError thrown by the Pybind11 module into a python exception"""
 
 
 class Counters(NamedTuple):
     """Data Class defining the various counters for a Run"""
 
-    frameCount: int
+    frameCount: int = 0
     """Number of frames from the detector"""
 
-    rawHitCount: int
+    rawHitCount: int = 0
     """Total number of Raw Hits"""
 
-    inputTimeFrame: int
+    inputTimeFrame: int = 0
     """Total number of time frames from UDP"""
 
-    finishedTimeFrame: int
+    finishedTimeFrame: int = 0
     """Total number of Finished (output) time frames"""
 
 
-
-
-class histogrammer():
+class Histogrammer:
     """
     Histogram Handling class, providing a bridge between the Adapter/Controller of Odin Control
-    and the interface provided by PyBind11 to William's code
-
-    Mainly designed to provide methods that can connect to a parameter tree
+    and the interface provided by PyBind11 to William's C++ Library
     """
+
+    THRES_MAX = 4095
+    """Maximum Threshold Value"""
+    THRES_MIN = -4096
+    """Minimum Threshold Value"""
     
     def __init__(self, options: dict[str, str]) -> None:
         
@@ -51,10 +52,34 @@ class histogrammer():
 
         self.status: ConnectionStatus = "disconnected"
         
+        # PCI DEVICE SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.useQdma = options.get("useqdma", "").lower() in ["true", "1", "yes"]
         self.busNum = int(options.get("busnum", 0))
         self.devNum = int(options.get("devnum", 0))
         self.funcNum = int(options.get("funcnum", 0))
+
+        # UDP CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        self.source_ip = options.get("source_ip", "default")
+        self.dest_ip = options.get("dest_ip", "default")
+        self.accel_ip = options.get("accel_ip", "default")
+
+        self.source_port = int(options.get("source_port", 0))
+        self.accel_port = int(options.get("accel_port", 0))
+        self.dest_port = int(options.get("dest_port", 0))
+
+        self.connectType = HexitecUdpRxConnection.Normal
+        self.numUDPThreads = 8
+
+        # HISTOGRAM FORMAT CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~
+        self.mappedMode = defines.MappedMode.OFF
+        self.clusterMode = defines.ClusterMode.POSITIVE
+        self.clusterType = defines.ClusterEnable.CLUSTER_ENB_ALL
+        self.autoTrigMode = defines.AutoTrigMode.AUTOTRIG_1IN16
+
+        # THRESHOLD VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        self.thres_main = (-35, 35)
+        self.thres_low = (-25, 25)
+        self.thres_abs = (1, 1000)
 
         self.chip_select = -1  # -1 applies changes to all chips
         self.stream_select = -1  # -1 applies to all data streams
@@ -62,13 +87,19 @@ class histogrammer():
 
         self.inter_frame_gap = 4095
 
-        self.frame_counters = Counters()
+        self.frame_counters = Counters(0, 0, 0, 0)
 
-        #TODO: there will be More Config Options, I'm sure
+        self.counter_callback = PeriodicCallback(
+            self.read_counters_callback,
+            100)
+
+
+    def read_counters_callback(self):
+        self.frame_counters = self.getFrameCounts()
 
     def _run_method(self, method: Callable[..., T], *args, **kwargs) -> T:
         """Run the provided Pybind11 Method, redirecting all stdout to devnull and converting
-        RuntimeErrors into HistogramExceptions
+        RuntimeErrors into InternalLibExceptions
 
         TODO: Rather than just redirect to devnull, provide means to redirect to logger or other file
 
@@ -79,12 +110,12 @@ class histogrammer():
         :returns: The return value of the Method. Most methods return None, but some return status codes or requested values
 
         :raises InternalLibException: If the method raises an error, it is converted into a InternalLibException
-        :raises HistogramException: Raised if the method cannot be run, either due to the current run state or the device not being connected
+        :raises InternalLibException: Raised if the method cannot be run, either due to the current run state or the device not being connected
         """
 
         if self.hexitec is None and method.__name__ != "XDmaHexitec":
             # can't run a method on a class not yet initalised (unless that method is the initalisation in question)
-            raise HistogramException("Cannot run method {}: Histogrammer not Initialised".format(method.__name__))
+            raise InternalLibException("Cannot run method {}: Histogrammer not Initialised".format(method.__name__))
         try:
             with redirect_stdout(open(os.devnull, "w")), redirect_stderr(open(os.devnull, "w")):
                 return method(*args, **kwargs)
@@ -98,11 +129,12 @@ class histogrammer():
 
             self.status = "connected"
             self.initialise()
-        except (RuntimeError, HistogramException):
+        except (RuntimeError, InternalLibException):
             self.status = "disconnected"
+            self.hexitec = None
             logging.error("Unable to connected to Device. Check provided Info:")
             logging.error("BusNum: %d, DevNum: %d, FuncNum: %d", self.busNum, self.devNum, self.funcNum)
-            raise HistogramException("Unable to connect to Device. Check PCI device numbers")
+            raise InternalLibException("Unable to connect to Device. Check PCI device numbers")
 
     def disconnect(self):
         # additional clearup should almost certainly be done. Set the turn off run bit, for a start?
@@ -112,6 +144,12 @@ class histogrammer():
     def initialise(self):
         """Initialise various values and Lookup Tables to the initial defaults"""
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)  # turn off run bit to stop any acquisition
+
+        # disable any datamovers that might be running
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
+
+        # initalise lookup tables
         self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_EDGE_POS_RECIP, self.stream_select)
         self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_NEG_NEB_RECIP, self.stream_select)
         self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_L_POS_RECIP, self.stream_select)
@@ -131,13 +169,17 @@ class histogrammer():
 
         # set the run reg to 1 to start producing histograms
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 1)
+        self.status = "running"
+        self.counter_callback.start()
 
     def stop_run(self):
 
+        self.counter_callback.stop()
         # making sure to read the current frame counts before turning off the run bit
         # as turning off the bit flushes the histograms and we lose this information
         self.frame_counters = self.getFrameCounts()
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
+        self.status = "completed"
 
     def setBaseline(self, mask: defines.BaselineMask, divide: defines.BaselineDivide, enableDither: bool):
         """Set the Baseline Mode"""
@@ -147,13 +189,13 @@ class histogrammer():
             self.hexitec.setBaselineMode(self.chip_select, mask, divide, enableDither, useAbsTrig)
         except RuntimeError as e:
             logging.error("Error Setting Baseline: %s", e)
-            raise HistogramException("{}".format(e))
+            raise InternalLibException("{}".format(e))
     
     def setClusterMode(self, clusterMode: defines.ClusterMode, autoTrigMode: defines.AutoTrigMode):
         """Sets the cluster Mode and the auto triggering.
         
         :param clusterMode: The mode which describes how and which clusters are chosen
-        :param autoTrigMode: The Auto Triggering mode for pixels in frames.
+        :param autoTrigMode: Sets the frequency at which the pixels are triggered
         """
 
         self._run_method(self.hexitec.setClusterMode, self.chip_select, clusterMode, autoTrigMode)
@@ -172,8 +214,7 @@ class histogrammer():
     def setTriggerThreshold(self, selectThreshold: Literal["absolute", "main" , "lower"],
                             cols: tuple[int, int],
                             rows: tuple[int, int],
-                            threshold: tuple[int, int],
-                            enable: bool):
+                            threshold: tuple[int, int]):
         """Set the selected trigger threshold values for the specified rows and columns
         
         :param selectThreshold: Select which trigger threshold to set
@@ -182,7 +223,6 @@ class histogrammer():
         :param threshold: The lower and upper threshold value for this trigger.
             For the Absolute threshold, this is a lower and upper value.
             For the other thresholds, this is a negative and a positive value.
-        :param enable: Enables the trigger for the pixel. Only applicable to the Main Threshold.
         """
 
         if selectThreshold == "absolute":
@@ -201,7 +241,7 @@ class histogrammer():
                              rows[0], rows[1],
                              max(threshold),
                              min(threshold),
-                             enable)
+                             True)
         elif selectThreshold == "lower":
             self._run_method(self.hexitec.setLowerTriggerThres,
                              self.chip_select,
@@ -210,7 +250,7 @@ class histogrammer():
                              max(threshold),
                              min(threshold))
         else:
-            raise HistogramException("{} not a valid Threshold Option".format(selectThreshold))
+            raise InternalLibException("{} not a valid Threshold Option".format(selectThreshold))
     
     def addLinearityOffset(self, offset: float = 0.0):
         """Adds a fixed offset to the linearity correction. Must be done after anything else
@@ -230,7 +270,7 @@ class histogrammer():
         :param runMode: Enum value that defines the run mode of the histogrammer, specifying what data to include
         :param mappedMode: Enum value that defines the Mapped Mode of the histogram.
 
-        :raises HistogramException: If the combination of numBins and runMode is invalid
+        :raises InternalLibException: If the combination of numBins and runMode is invalid
         """
 
         histFormat = (runMode << 3) | numBins
@@ -238,9 +278,29 @@ class histogrammer():
                          self.chip_select,
                          histFormat, mappedMode)
 
-    def setupUdpReceive(self, srcIP: int, destIP: int,
+
+    def getIntfromIP(self, ip: str) -> int:
+        """Turn an IP address string (eg 192.168.0.0) into the required 32 Bit Integer value
+        
+        :param ip: the IP address to convert, in the standard dotted decimal notation
+
+        :return: The IP address provided as a 32 bit number.
+                 If the supplied address is invalid for any reason, returns a 0 so the histogrammer
+                 uses the default IP addresses
+        """
+        # 192 << 24 | 168 << 16 | 2 << 8 |
+
+        try:
+            parts = [int(x) for x in ip.split(".")]
+            if len(parts) < 4:
+                raise ValueError
+            return parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]
+        except ValueError:
+            return 0
+
+    def setupUdpReceive(self, srcIP: str, destIP: str,
                  srcPort: int, destPort: int,
-                 connectType: defines.UdpRxConnection):
+                 connectType: HexitecUdpRxConnection):
         """Setup the UDP cores to receive data
         
         :param srcIP: IP address of the data source (Likely the Alpha Data card)
@@ -250,17 +310,17 @@ class histogrammer():
         :param connectType: The type of connection, Normal, Loopback, or FromHost
         """
 
+        srcIP_int = self.getIntfromIP(srcIP)
+        destIP_int = self.getIntfromIP(destIP)
+
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
         self._run_method(self.hexitec.udpRxSetup,
-                         srcIP, destIP,
+                         srcIP_int, destIP_int,
                          srcPort, destPort,
                          connectType)
         
-        # stop any running data movers
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
 
-    def setupUdpSend(self, srcIP: int, destIP: int,
+    def setupUdpSend(self, srcIP: str, destIP: str,
                      srcPort: int, destPort: int,
                      numThreads: int, mappedMode: defines.MappedMode):
         """Setup the UDP cores to send Histograms to a server (usually an Odin Data instance)
@@ -273,9 +333,11 @@ class histogrammer():
         :param mappedMode: Enum value that defines the Mapped Mode of the histogram.
         """
 
+        srcIP_int = self.getIntfromIP(srcIP)
+        destIP_int = self.getIntfromIP(destIP)
         
         if not (numThreads & (numThreads - 1) == 0 and numThreads > 0 and numThreads < (1<<8)):
-            raise HistogramException("Invalid Number of UDP RX Threads: {}. Must be power of 2".format(numThreads))
+            raise InternalLibException("Invalid Number of UDP RX Threads: {}. Must be power of 2".format(numThreads))
 
 
         farmBase = 0
@@ -286,7 +348,7 @@ class histogrammer():
             numThreads = numThreads * 2  # mapped interleave mode requires threads for spectra and mapped
 
         self._run_method(self.hexitec.udpTxSetup,
-                         srcIP, destIP,
+                         srcIP_int, destIP_int,
                          srcPort, destPort,
                          0, numThreads,
                          True, self.inter_frame_gap, False)
@@ -324,7 +386,7 @@ class histogrammer():
         :return counters.inputTimeFrame: Total number of Timeframes from the UDP input
         :return counters.finishedTimeFrame: Count of Finished Time Frames that have been output, or -1 if invalid
         """
-        counters = Counters()
+        counters = Counters(0, 0, 0, 0)
 
         frameCount = []
         rawCount = []

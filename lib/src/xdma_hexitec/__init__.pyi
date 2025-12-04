@@ -6,7 +6,15 @@ Provides a Python interface to the XDmaHexitec C++ library written by William He
 """
 
 from enum import IntEnum
-from .defines import HexitecGeneration, UdpRxConnection
+from .defines import HexitecGeneration
+
+
+class HexitecUdpRxConnection(IntEnum):
+    """UDP Connection Type, defining where data is coming from"""
+
+    Normal = 0
+    Loopback = 1
+    FromHost = 2
 
 
 class XDmaHexitec:
@@ -610,7 +618,7 @@ class XDmaHexitec:
                    accelIpAddrP: int,
                    headPort: int,
                    accelPort: int,
-                   connType: UdpRxConnection) -> None:
+                   connType: HexitecUdpRxConnection) -> None:
         """Setup UDP core(s) to receive data from the detector head (srcIpAddr) usually
         
         For Hexitec MHz this is a single 100 G link either from the Alpha data card (in normal use) of from the server in test mode. It can also loop back from the accelerator in a loopback test.
@@ -667,7 +675,7 @@ class XDmaHexitec:
         """
 
         """
-    def udpShowRxStatus(self) -> None:
+    def udpShowRxStatus(self) -> str:
         """
 
         """
@@ -851,3 +859,4 @@ class XDmaHexitec:
         """
 
         """
+

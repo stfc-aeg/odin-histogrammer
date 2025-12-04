@@ -135,28 +135,28 @@ class BaselineDivide(IntEnum):
 class ClusterMode(IntEnum):
     """Macros to describe how/which clusters of hist are chosen."""
 
-    CLUSTER_MODE_INDEP       = 0
+    INDEPENDANT       = 0
     """Each pixel trigger independently, Charge sharing correction is bypassed"""
 
-    CLUSTER_MODE_LONE_POS    = 1
+    LONE_POSITIVE    = 1
     """Trigger only on lone positive trigger, with no nearest neighbours"""
 
-    CLUSTER_MODE_LONE_POSNEG = 2
+    LONE_POSITIVE_OR_NEGATIVE = 2
     """Trigger only on lone positive or negative trigger, with no nearest neighbours"""
 
-    CLUSTER_MODE_POS         = 3
+    POSITIVE         = 3
     """Trigger on all recognised types of clusters with 1 to 4 positive main triggers"""
 
-    CLUSTER_MODE_POSNEG      = 4
+    POSITIVE_OR_NEGATIVE      = 4
     """Trigger on all recognised types of clusters with at least 1 positive trigger with positive or negative neighbours"""
 
-    CLUSTER_MODE_POSNEG_LOW  = 5
+    POSITIVE_OR_NEGATIVE_LOWER = 5
     """In addition to all POSNEG trigger, for single positive trigger, use lower threshold to look for one significant neighbour"""
 
-    CLUSTER_MODE_AUTO_OR_POS = 6
+    AUTO_OR_POSITIVE = 6
     """Pseduo randomly trigger to allow histogram of noise but also trigger using normal Positive event trigger to see events."""
 
-    CLUSTER_MODE_AUTO        = 7
+    AUTO        = 7
     """Pseduo randomly trigger to allow histogram of noise"""
 
 

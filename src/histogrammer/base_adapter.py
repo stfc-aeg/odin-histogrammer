@@ -30,7 +30,7 @@ class BaseAdapter(ApiAdapter):
 
     def cleanup(self):
 
-        logging.debug("%s cleanip called", self._name)
+        logging.debug("%s cleanup called", self._name)
         self.controller.cleanup()
         
     @response_types("application/json", default="application/json")
