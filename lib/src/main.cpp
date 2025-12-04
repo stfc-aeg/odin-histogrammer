@@ -243,10 +243,10 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .export_values()
         .finalize();
 
-    py::native_enum<XDmaHexitec::MappedView>(hexitec, "MappedView", "enum.IntEnum")
-        .value("MappedViewSpectra", XDmaHexitec::MappedView::MappedViewSpectra)
-        .value("MappedViewMapped8", XDmaHexitec::MappedView::MappedViewMapped8)
-        .value("MappedViewMapped16", XDmaHexitec::MappedView::MappedViewMapped16)
+    py::native_enum<XDmaHexitec::MappedView>(hexitec, "MappedView", "enum.IntEnum", "Define the spectra readout for a Data Mover")
+        .value("Spectra", XDmaHexitec::MappedView::MappedViewSpectra)
+        .value("Mapped8", XDmaHexitec::MappedView::MappedViewMapped8)
+        .value("Mapped16", XDmaHexitec::MappedView::MappedViewMapped16)
         .export_values()
         .finalize();
     

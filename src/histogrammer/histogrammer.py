@@ -54,14 +54,15 @@ class Histogrammer:
         
         # PCI DEVICE SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.useQdma = options.get("useqdma", "").lower() in ["true", "1", "yes"]
-        self.busNum = int(options.get("busnum", 0))
-        self.devNum = int(options.get("devnum", 0))
-        self.funcNum = int(options.get("funcnum", 0))
+        self.busNum = int(options.get("bus_num", 0))
+        self.devNum = int(options.get("dev_num", 0))
+        self.funcNum = int(options.get("func_num", 0))
 
         # UDP CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.source_ip = options.get("source_ip", "default")
         self.dest_ip = options.get("dest_ip", "default")
-        self.accel_ip = options.get("accel_ip", "default")
+        self.accel_rx_ip = options.get("accel_rx_ip", "default")
+        self.accel_tx_ip = options.get("accel_tx_ip", "default")
 
         self.source_port = int(options.get("source_port", 0))
         self.accel_port = int(options.get("accel_port", 0))
@@ -292,7 +293,7 @@ class Histogrammer:
 
         try:
             parts = [int(x) for x in ip.split(".")]
-            if len(parts) < 4:
+            if not len(parts) == 4:
                 raise ValueError
             return parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]
         except ValueError:
@@ -356,8 +357,8 @@ class Histogrammer:
         # trailer mode is not disabled (becasue False), but the default values are set by this method
         self.hexitec.disableDataMoverUDPTrailer(False, 0)
 
-        autoMode = defines.AutoMode.TRIGGER_READ_CLEAR
-        farmIndex = defines.FarmIndexMode.FROM_TF
+        autoMode = XDmaHexitec.AutonomousMode.AutoTriggerReadAndClear
+        farmIndex = XDmaHexitec.FarmIndexMode.FarmIndexFromTF
 
         #TODO: check for no_clear/UDP_dist to modify autoMode/farmIndex
 
@@ -366,7 +367,7 @@ class Histogrammer:
             # setup data mover farm mode for Spectra
             logging.debug("Setting up UDP DataMover for Spectra Output")
             self._run_method(self.hexitec.startDataMoverStreamUDP, 
-                             timeframe_start, defines.MappedView.SPECTRA, False,
+                             timeframe_start, XDmaHexitec.MappedView.Spectra, False,
                              True, 0, farmMask, farmBase, autoMode, farmIndex)
             farmBase = farmBase + farmMask + 1
         
@@ -374,7 +375,7 @@ class Histogrammer:
         if mappedMode != defines.MappedMode.OFF:
             logging.debug("Setting up UDP Datamover for Mapped Output")
             self._run_method(self.hexitec.startDataMoverStreamUDP,
-                             timeframe_start, defines.MappedView.MAPPED16, False,
+                             timeframe_start, XDmaHexitec.MappedView.Mapped16, False,
                              True, 0, farmMask, farmBase, autoMode, farmIndex)
 
     def getFrameCounts(self) -> Counters:
@@ -386,10 +387,13 @@ class Histogrammer:
         :return counters.inputTimeFrame: Total number of Timeframes from the UDP input
         :return counters.finishedTimeFrame: Count of Finished Time Frames that have been output, or -1 if invalid
         """
-        counters = Counters(0, 0, 0, 0)
+
 
         frameCount = []
         rawCount = []
+        inputTimeFrame = -1
+        finishedTimeFrame = -1
+
 
         # self.hexitec.getDiagnosticCounters(frameCount, rawCount)
         # passing an array pointer does not appear to work. Thankfully, all the getDiagnositcCounters
@@ -399,23 +403,21 @@ class Histogrammer:
             frameCount.append(self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_FRAME_COUNT0 + (2*i)))
             rawCount.append(self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RAW_HIT_COUNT0 + (2*i)))
 
-        counters.frameCount = frameCount[0]
-        counters.rawHitCount = sum(rawCount)
-
 
         frameToken = self.hexitec.getFlushedFrame()
         inputTimeFrame = self.hexitec.getInpTimeFrame(0)
 
         # mask to get the count from the register value
-        counters.inputTimeFrame = inputTimeFrame & defines.TimeFrameMasks.INPUT_COUNT
+        inputTimeFrame = inputTimeFrame & defines.TimeFrameMasks.INPUT_COUNT
 
         # check valid bit of frameToken
         if frameToken & defines.TimeFrameMasks.FLUSHED_VALID:
-            counters.finishedTimeFrame = frameToken & defines.TimeFrameMasks.FLUSHED_COUNT
-        else:
-            counters.finishedTimeFrame = -1
+            finishedTimeFrame = frameToken & defines.TimeFrameMasks.FLUSHED_COUNT
 
-        return counters
+        return Counters(frameCount[0],
+                        sum(rawCount),
+                        inputTimeFrame,
+                        finishedTimeFrame)
 
         
         

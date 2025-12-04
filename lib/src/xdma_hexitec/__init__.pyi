@@ -23,6 +23,21 @@ class XDmaHexitec:
     to various registers, DMA buffers, and other such parts of the firmware.
     """
 
+    class MappedView(IntEnum):
+        Spectra = 0
+        Mapped8 = 1
+        Mapped16 = 2
+
+    class AutonomousMode(IntEnum):
+        AutoOff = 0
+        AutoTriggerRead = 1
+        AutoTriggerReadAndClear = 2
+
+    class FarmIndexMode(IntEnum):
+        FarmIndexIncEOF = 0
+        FarmIndexIncEOP = 1
+        FarmIndexFromTF = 2
+
     def __init__(self, useQdma: bool, busNum: int, devNum: int, funcNum: int):
         """
         Initialise the XDmaHexitec class, connected to the defined XDMA device
@@ -711,7 +726,7 @@ class XDmaHexitec:
         """
 
     def startDataMoverStreamUDP(self,
-                                tfExt: int, mappedView: int,
+                                tfExt: int, mappedView: MappedView,
                                 sixteenBit: bool, sumChips: bool,
                                 qid: int, farmMask: int, farmBase: int,
                                 autoMode: int, farmIndexMode: int) -> int:

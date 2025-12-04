@@ -141,12 +141,12 @@ class HistogramController(BaseController):
 
     def setupUDP(self):
         self.histogrammer.setupUdpReceive(
-            self.histogrammer.source_ip, self.histogrammer.accel_ip,
+            self.histogrammer.source_ip, self.histogrammer.accel_rx_ip,
             self.histogrammer.source_port, self.histogrammer.accel_port,
             self.histogrammer.connectType
         )
         self.histogrammer.setupUdpSend(
-            self.histogrammer.accel_ip, self.histogrammer.dest_ip,
+            self.histogrammer.accel_tx_ip, self.histogrammer.dest_ip,
             self.histogrammer.accel_port, self.histogrammer.dest_port,
             self.histogrammer.numUDPThreads, self.histogrammer.mappedMode 
         )
