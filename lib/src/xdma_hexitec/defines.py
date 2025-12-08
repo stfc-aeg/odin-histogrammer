@@ -181,25 +181,25 @@ class ClusterEnable(IntFlag):
     """Flags to enable various cluster patterns into the output data.
     These values can be bitwise OR'd together to enable multiple patterns"""
 
-    CLUSTER_ENB_LONE = (1 << 0)
-    CLUSTER_ENB_HOZ = (1 << 1)
-    CLUSTER_ENB_HOZ_NL = (1 << 2)
-    CLUSTER_ENB_HOZ_NR = (1 << 3)
-    CLUSTER_ENB_VERT = (1 << 4)
-    CLUSTER_ENB_VERT_NA = (1 << 5)
-    CLUSTER_ENB_VERT_NB = (1 << 6)
-    CLUSTER_ENB_DIAG1 = (1 << 7)
-    CLUSTER_ENB_DIAG1NL = (1 << 8)
-    CLUSTER_ENB_DIAG1NR = (1 << 9)
-    CLUSTER_ENB_DIAG2 = (1 << 10)
-    CLUSTER_ENB_DIAG2NL = (1 << 11)
-    CLUSTER_ENB_DIAG2NR = (1 << 12)
-    CLUSTER_ENB_L1 = (1 << 13)
-    CLUSTER_ENB_L2 = (1 << 14)
-    CLUSTER_ENB_L3 = (1 << 15)
-    CLUSTER_ENB_L4 = (1 << 16)
-    CLUSTER_ENB_QUAD = (1 << 17)
-    CLUSTER_ENB_ALL = (0x3FFFF)
+    LONE = (1 << 0)
+    HOZ = (1 << 1)
+    HOZ_NL = (1 << 2)
+    HOZ_NR = (1 << 3)
+    VERT = (1 << 4)
+    VERT_NA = (1 << 5)
+    VERT_NB = (1 << 6)
+    DIAG1 = (1 << 7)
+    DIAG1NL = (1 << 8)
+    DIAG1NR = (1 << 9)
+    DIAG2 = (1 << 10)
+    DIAG2NL = (1 << 11)
+    DIAG2NR = (1 << 12)
+    L1 = (1 << 13)
+    L2 = (1 << 14)
+    L3 = (1 << 15)
+    L4 = (1 << 16)
+    QUAD = (1 << 17)
+    ALL = (0x3FFFF)
 
 
 class NumBins(IntEnum):
@@ -218,13 +218,13 @@ class NumBins(IntEnum):
     """Make histograms with 512 energy bins"""
 
     ENG8     = 4
-    """Make histograms with 256  energy bins"""
+    """Make histograms with 256 energy bins"""
 
     ENG7     = 5
-    """Make histograms with 128  energy bins"""
+    """Make histograms with 128 energy bins"""
 
     ENG10LSB = 6
-    """Make histograms with 128  energy bins"""
+    """Make histograms with 1024 energy bins, lowest 10 bits of energy"""
 
 
 class RunMode(IntEnum):

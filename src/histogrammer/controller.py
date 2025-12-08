@@ -3,12 +3,12 @@ import logging
 from .base_controller import BaseError, BaseController
 
 from functools import partial
-from typing import get_args, Literal
+from typing import get_args, Literal, Type
 from enum import Enum
 
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from histogrammer.histogrammer import Histogrammer, ConnectionStatus, InternalLibException
-from xdma_hexitec.defines import ClusterEnable, ClusterMode, AutoTrigMode
+from xdma_hexitec.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode, RunMode, NumBins
 
 class HistogramException(BaseError):
     """Simple exception class to wrap lower-level exceptions."""
@@ -61,16 +61,25 @@ class HistogramController(BaseController):
                     "mode": (lambda: self.enumToString(self.histogrammer.clusterMode),
                              partial(self.setCluster, "clusterMode"),
                              {"allowed_values": [self.enumToString(val) for val in ClusterMode]}),
-                    "types": (None, None),
+                    "types": {  # dict comprehension to create bool param for each flag option
+                        self.enumToString(enb): (partial(self.getClusterType, enb), partial(self.setClusterType, enb))
+                        for enb in ClusterEnable
+                    },
                     "auto_trig_mode": (lambda: self.enumToString(self.histogrammer.autoTrigMode),
                                        partial(self.setCluster, "autoTrigMode"),
                                        {"allowed_values": [self.enumToString(val) for val in AutoTrigMode]})
 
                 },
                 "hist_format": {
-                    "bins": (None, None),
-                    "run_mode": (None, None),
-                    "mapped_mode": (None, None)
+                    "num_bins": (lambda: self.histogrammer.numBins,
+                                 partial(self.setHistFormat, "numBins"),
+                                 {"allowed_values": [2**x for x in range(7, 13)]}),
+                    "run_mode": (lambda: self.enumToString(self.histogrammer.runMode),
+                                 partial(self.setHistFormat, "runMode"),
+                                 {"allowed_values": [self.enumToString(val) for val in RunMode]}),
+                    "mapped_mode": (lambda: self.enumToString(self.histogrammer.mappedMode),
+                                    partial(self.setHistFormat, "mappedMode"),
+                                    {"allowed_values": [self.enumToString(val) for val in MappedMode]})
                 },
                 "thresholds": {  # set the trigger thresholds for the three available triggers
                     "main": (lambda: self.histogrammer.thres_main,
@@ -109,15 +118,13 @@ class HistogramController(BaseController):
 
     def enumToString(self, enumVal: Enum) -> str:
         val_name = enumVal._name_
-        val_name = val_name.lower()
-        val_name = val_name.replace("_", " ")
         return val_name.lower().replace("_", " ")
     
     def stringToEnum(self, enumStr: str) -> str:
         return enumStr.upper().replace(" ", "_")
 
 
-    def setValue(self, param, value):
+    def setValue(self, param: str, value):
         """Set the specified attribute on the Histogrammer object
         
         :param param: Name of the Attribute to set.
@@ -125,6 +132,8 @@ class HistogramController(BaseController):
         """
         if self.histogrammer.status == "running":
             raise ParameterTreeError("Cannot change settings while an aquisition is running")
+        if not hasattr(self.histogrammer, param):
+            raise ParameterTreeError("Histogrammer does not have an attribute called {}".format(param))
         setattr(self.histogrammer, param, value)
 
     def setConnect(self, connect: bool):
@@ -181,7 +190,12 @@ class HistogramController(BaseController):
 
     def setCluster(self, setting: Literal["clusterMode", "autoTrigMode", "clusterType"],
                    value: str):
+        """Set the Clustering Options in the histogrammer class
+        
 
+        :param setting: Which of the values are being set
+        :param value: the string name of the value being set. Will be converted into the relevent ENUM value
+        """
 
         if setting == "clusterType":
             # TODO: Special Case cause its a set of flags. List all individually with toggles?
@@ -195,3 +209,38 @@ class HistogramController(BaseController):
             val: AutoTrigMode = AutoTrigMode[self.stringToEnum(value)]
         self.setValue(setting, val)
         self.histogrammer.setClusterMode(self.histogrammer.clusterMode, self.histogrammer.autoTrigMode)
+
+    def setHistFormat(self, setting: Literal["numBins", "mappedMode", "runMode"], value: str | int):
+
+        if setting == "numBins":
+            lookup = {128: NumBins.ENG7,
+                      256: NumBins.ENG8,
+                      512: NumBins.ENG9,
+                      1024: NumBins.ENG10,
+                      2048: NumBins.ENG11,
+                      4096: NumBins.ENG12}
+            val: NumBins = lookup.get(value, NumBins.ENG10LSB)
+        elif setting == "mappedMode":
+            val = MappedMode[self.stringToEnum(value)]
+        else:
+            val = RunMode[self.stringToEnum(value)]
+        
+        self.setValue(setting, val)
+
+        self.histogrammer.setHistFormat(self.histogrammer.numBins, self.histogrammer.runMode, self.histogrammer.mappedMode)
+
+
+    def getClusterType(self, flag: ClusterEnable):
+
+        return flag in self.histogrammer.clusterType
+    
+    def setClusterType(self, flag: ClusterEnable, value: bool):
+
+        if value:
+            self.histogrammer.clusterType = self.histogrammer.clusterType | flag  # OR with flag val to set flag to 1
+        else:
+            self.histogrammer.clusterType = self.histogrammer.clusterType & ~flag  # AND with inverted flag to set bit to 0
+        
+
+
+

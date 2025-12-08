@@ -74,8 +74,10 @@ class Histogrammer:
         # HISTOGRAM FORMAT CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~
         self.mappedMode = defines.MappedMode.OFF
         self.clusterMode = defines.ClusterMode.POSITIVE
-        self.clusterType = defines.ClusterEnable.CLUSTER_ENB_ALL
+        self.clusterType = defines.ClusterEnable.ALL
         self.autoTrigMode = defines.AutoTrigMode.AUTOTRIG_1IN16
+        self.numBins = 1024  # numBins.ENG10
+        self.runMode = defines.RunMode.NORMAL
 
         # THRESHOLD VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.thres_main = (-35, 35)
@@ -201,14 +203,14 @@ class Histogrammer:
 
         self._run_method(self.hexitec.setClusterMode, self.chip_select, clusterMode, autoTrigMode)
 
-    def setClusterTypes(self, clusterType: defines.ClusterEnable = defines.ClusterEnable.CLUSTER_ENB_ALL):
+    def setClusterTypes(self, clusterType: defines.ClusterEnable = defines.ClusterEnable.ALL):
         """Sets the cluster pattern type(s).
         
         :param clusterType: A Flag of all cluster patterns to enable, bitwise ORd together. If this value is 0, it is overwritten to the default that enables all patterns
         """
 
         if clusterType not in defines.ClusterEnable:
-            clusterType = defines.ClusterEnable.CLUSTER_ENB_ALL
+            clusterType = defines.ClusterEnable.ALL
 
         self._run_method(self.hexitec.setClusterTypes, self.chip_select, clusterType)
 
