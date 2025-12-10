@@ -89,6 +89,19 @@ class GlobalRegisters(IntEnum):
     GLB_SAVING_BL = 0x10E
     """Bitwise mask of chip=0..NumChips-1 of Saving Baseline status bit"""
 
+    GLB_RD_ITFG_STATUS = 0x116
+    """Word offset of Integrated time frame generator status register"""
+
+    GLB_RD_ITFG_INP_FRAME = 0x117
+    """Monitor Count DOWN of specified number of detector frames to accumulate into current output frame"""
+
+    GLB_RD_ITFG_TIME_FRAME = 0x118
+    """Monitor Count UP of current output time frame."""
+
+    GLB_RD_ITFG_CYCLES = 0x119
+    """Monitor Count UP of current output time frame."""
+
+
 class ChipRegisters(IntEnum):
     SEL_ADDR = 0
     BASESUB = 1
@@ -187,13 +200,13 @@ class AutoTrigMode(IntEnum):
     AUTOTRIG_1IN16 = 0
     """Auto trigger mode triggers each pixel 1 frame in 16"""
 
-    AUTOTRIG_1IN8 = 0
+    AUTOTRIG_1IN8 = 1
     """Auto trigger mode triggers each pixel 1 frame in 8"""
 
-    AUTOTRIG_1IN4 = 0
+    AUTOTRIG_1IN4 = 2
     """Auto trigger mode triggers each pixel 1 frame in 4"""
 
-    AUTOTRIG_1IN2 = 0
+    AUTOTRIG_1IN2 = 3
     """Auto trigger mode triggers each pixel 1 frame in 2,
     very fast for Hexitec MHz histogramming, probably OK for 6x2"""
 
@@ -344,3 +357,14 @@ class TimeFrameMasks(IntFlag):
 
     FLUSHED_COUNT = 0xFFFFFFFFF
     """Extract Flushed Time Frame Count from register"""
+
+
+class TimeFrameStatus(IntEnum):
+    RUNNING = (1<<0)
+    """ITFG is running (including paused waiting for triggers if used)"""
+
+    PAUSED = (1<<1)
+    """ITFG is paused, waiting for trigger."""
+
+    FINISHED = (1<<2)
+    """ITFG is has finished."""

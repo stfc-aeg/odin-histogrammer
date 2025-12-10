@@ -7,7 +7,8 @@ from typing import get_args, Literal, Type
 from enum import Enum
 
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
-from histogrammer.histogrammer import Histogrammer, ConnectionStatus, InternalLibException
+from histogrammer.histogrammer import Histogrammer, InternalLibException
+from histogrammer.histogrammer import ConnectionStatus, AcquisitionMode
 from xdma_hexitec.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode, RunMode, NumBins
 from xdma_hexitec.defines import BaselineDivide, BaselineMask
 
@@ -34,6 +35,8 @@ class HistogramController(BaseController):
             },
             "acquisition": {
                 "run": (lambda: self.histogrammer.status == "running", self.setRun),
+                "mode": (lambda: self.histogrammer.acqMode, partial(self.setValue, "acqMode"),
+                         {"allowed_values": list(get_args(AcquisitionMode))}),
                 "timer": (lambda: self.histogrammer.runTimer, partial(self.setValue, "runTimer")),
                 "input_frames": (lambda: self.histogrammer.input_frames, partial(self.setValue, "input_frames")),
                 "output_frames": (lambda: self.histogrammer.output_frames, partial(self.setValue, "output_frames")),
@@ -42,6 +45,11 @@ class HistogramController(BaseController):
                     "raw_hits": (lambda: self.histogrammer.frame_counters.rawHitCount, None),
                     "udp_frames": (lambda: self.histogrammer.frame_counters.inputTimeFrame, None),
                     "complete_time_frames": (lambda: self.histogrammer.frame_counters.finishedTimeFrame, None)
+                },
+                "itfg": {
+                    "status": (lambda: self.histogrammer.itfg_status["status"], None),
+                    "input_frames": (lambda: self.histogrammer.itfg_status["input_frame"], None),
+                    "output_frames": (lambda: self.histogrammer.itfg_status["output_frame"], None)
                 }
             },
             "udp": {

@@ -29,7 +29,7 @@ class HexitecITfgMode(IntEnum):
     """Wait for software trigger for each frame, accumulating programmed number of input frames and then discarding unused input frames until next SW trigger."""
 
     SWIncEach = 3
-    """"Wait for software trigger for start of first frame, accumulating frames until next rising edge of SW Trig.""""
+    """"Wait for software trigger for start of first frame, accumulating frames until next rising edge of SW Trig."""
 
     SWGated = 4     
     """Count While SW trigger is high, disable when increment time frame on falling edge."""
@@ -46,6 +46,13 @@ class HexitecITfgMode(IntEnum):
     HWGated   = 12      
     """Count While HW trigger is high, disable when increment time frame on falling edge."""
 
+class HexitecITfgStat:
+    """Struct container for reading the status of the ITFG"""
+
+    status: int
+    inpFrame: int
+    timeFrame: int
+    cycles: int
 
 
 class XDmaHexitec:

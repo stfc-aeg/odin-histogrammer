@@ -14,6 +14,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from collections.abc import Callable
 
 ConnectionStatus = Literal["disconnected", "connected", "configuring", "running", "completed"]
+AcquisitionMode = Literal["continuous", "timed", "count frames"]
 T = TypeVar("T")
 
 class InternalLibException(BaseError):
@@ -57,14 +58,16 @@ class Histogrammer:
         self.status: ConnectionStatus = "disconnected"
 
         # AQUISITION CONTROLS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # TODO: if both runTimer and input_frames are defined, which takes priority?
         self.runTimer = 0
         """If > 0, stops a run after that many seconds"""
-        self.input_frames = 0
+        self.input_frames = 2000000
         """Number of Input Frames per output Time Frame. If set, stops an aquisition after that many frames are received"""
-        self.output_frames = 1
+        self.output_frames = 20
         """Number of Output Time Frames"""
-        
+
+        self.acqMode: AcquisitionMode = "count frames"
+        """Define how the length of the acquisition is defined"""
+
         # PCI DEVICE SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.useQdma = options.get("useqdma", "").lower() in ["true", "1", "yes"]
         self.busNum = int(options.get("bus_num", 0))
@@ -109,14 +112,40 @@ class Histogrammer:
         self.inter_frame_gap = 4095
 
         self.frame_counters = Counters(0, 0, 0, 0)
+        self.itfg_status = {
+            "status": "Invalid",
+            "input_frame": 0,
+            "output_frame": 0,
+            "cycles": 0
+        }
 
         self.counter_callback = PeriodicCallback(
             self.read_counters_callback,
+            100)
+        
+        self.itfg_callback = PeriodicCallback(
+            self.read_itfg_status_callback,
             100)
 
 
     def read_counters_callback(self):
         self.frame_counters = self.getFrameCounts()
+
+    def read_itfg_status_callback(self):
+        stat = self.getItfgStatus()
+        try:
+            self.itfg_status["status"] = defines.TimeFrameStatus(stat[0]).name
+        except ValueError:
+            self.itfg_status["status"] = "invalid"
+        self.itfg_status["input_frame"] = stat[1]
+        self.itfg_status["output_frame"] = stat[2]
+        self.itfg_status["cycles"] = stat[3]
+
+        if stat[0] == defines.TimeFrameStatus.FINISHED:
+            self.stop_run()
+
+
+        
 
     def _run_method(self, method: Callable[..., T], *args, **kwargs) -> T:
         """Run the provided Pybind11 Method, redirecting all stdout to devnull and converting
@@ -166,10 +195,6 @@ class Histogrammer:
         """Initialise various values and Lookup Tables to the initial defaults"""
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)  # turn off run bit to stop any acquisition
 
-        # disable any datamovers that might be running
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
-
         # initalise lookup tables
         self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_EDGE_POS_RECIP, self.stream_select)
         self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_NEG_NEB_RECIP, self.stream_select)
@@ -197,7 +222,7 @@ class Histogrammer:
         
     def complete_start_run(self):
         
-        if self.input_frames:
+        if self.acqMode == "count frames":
             logging.debug("Setting up Internal Time Frame Generator")
             self.hexitec.iTfgSetup(HexitecITfgMode.SWFirst, 1, True, self.input_frames, self.output_frames, 1)
             logging.debug("Total histograms to be generated: {}".format(self.input_frames*self.output_frames))
@@ -215,15 +240,18 @@ class Histogrammer:
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 1)
         self.status = "running"
 
-        if self.input_frames:
-            pass  # ITFG status read loop. Stop run when ITFG status is FINISHED
-        elif self.runTimer:
+        if self.acqMode == "timed":
             IOLoop.current().call_later(self.runTimer, self.stop_run)
+
+        if self.acqMode == "count frames":
+            self.hexitec.iTfgTrigger()
+            self.itfg_callback.start()
         self.counter_callback.start()
 
     def stop_run(self):
         logging.debug("Stopping Run")
         self.counter_callback.stop()
+        self.itfg_callback.stop()
         # making sure to read the current frame counts before turning off the run bit
         # as turning off the bit flushes the histograms and we lose this information
         self.frame_counters = self.getFrameCounts()
@@ -427,10 +455,18 @@ class Histogrammer:
         destIP_int = self.getIntfromIP(destIP)
 
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
+        self.hexitec.setRxEthernetLoopback(0)  # disable ethernet loopback
         self._run_method(self.hexitec.udpRxSetup,
                          srcIP_int, destIP_int,
                          srcPort, destPort,
                          connectType)
+        
+        for i in range(self.hexitec.getNumRxUdp()):
+            self.hexitec.setRxEthernetReg(i, 0x0020, 1)  # TODO: TEMP MAGIC NUMBER, MATCHES ETHERNET_PM_TICK_REG
+
+        # disable any datamovers that might be running
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
         
 
     def setupUdpSend(self, srcIP: str, destIP: str,
@@ -459,7 +495,8 @@ class Histogrammer:
 
         if mappedMode == defines.MappedMode.INTERLEAVE:
             numThreads = numThreads * 2  # mapped interleave mode requires threads for spectra and mapped
-
+        logging.debug("Setting up UDP Tx With The Following settings:")
+        logging.debug("Source IP: {}, Source Port: {}, Dest IP: {}, DestPort: {}".format(srcIP_int, srcPort, destIP_int, destPort))
         self._run_method(self.hexitec.udpTxSetup,
                          srcIP_int, destIP_int,
                          srcPort, destPort,
@@ -488,7 +525,7 @@ class Histogrammer:
             logging.debug("Setting up UDP Datamover for Mapped Output")
             self._run_method(self.hexitec.startDataMoverStreamUDP,
                              timeframe_start, XDmaHexitec.MappedView.Mapped16, False,
-                             True, 0, farmMask, farmBase, autoMode, farmIndex)
+                             True, 1, farmMask, farmBase, autoMode, farmIndex)
 
     def getFrameCounts(self) -> Counters:
         """Return the current count of frames for an in-progress run.
@@ -530,6 +567,20 @@ class Histogrammer:
                         sum(rawCount),
                         inputTimeFrame,
                         finishedTimeFrame)
+    
+    def getItfgStatus(self):
+        """Read the Time Frame Generator statuses. End an acquisition if the status reads FINISHED"""
+
+        
+        # self.hexitec.iTfgReadStatus(stat) # passing the python class as a struct pointer didnt seem to work
+        # so we read the registers manually
+        status = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_STATUS)
+        inpFrame = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_INP_FRAME)
+        timeFrame = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_TIME_FRAME)
+        cycles = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_CYCLES)
+        logging.debug("{} {} {} {}".format(status, inpFrame, timeFrame, cycles))
+        return (status, inpFrame, timeFrame, cycles)
+
 
         
         
