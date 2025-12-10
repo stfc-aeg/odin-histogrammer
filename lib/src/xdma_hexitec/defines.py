@@ -83,38 +83,59 @@ class GlobalRegisters(IntEnum):
     GLB_RAW_HIT_COUNT0 = 0x131
     """Hexitec MHz Raw Hit Count (Chip 0)"""
 
+    GLB_LOADING_BL = 0x10C
+    """Bitwise mask of chip=0..NumChips-1 of Loading Baseline status bit"""
+
+    GLB_SAVING_BL = 0x10E
+    """Bitwise mask of chip=0..NumChips-1 of Saving Baseline status bit"""
+
+class ChipRegisters(IntEnum):
+    SEL_ADDR = 0
+    BASESUB = 1
+    CLUSTER = 2
+    CORR_A = 3
+    ENB_CLUSTER = 4
+    FORMAT = 5
+    CLUSTER_GRADE = 6
+
+class BaselineChipVals(IntFlag):
+    LOAD = (1<<8)
+    """Trigger transfer of (fixed) baseline values from Read/write table to active baseline table. Needs data to be running to complete"""
+    
+    SAVE = (1<<9)
+    """Trigger transfer of baseline values from active baseline value to Read/write table. Needs data to be running to complete"""
 
 class BaselineMask(IntEnum):
     """Macros to describe control of how the baseline estimate is updated"""
 
-    BSUB_MASK_NONE = 0
+    NONE = 0
     """Never mask update, always apply feedback adjustment"""
 
-    BSUB_MASK_MAIN = 1
+    MAIN = 1
     """Mask update when this pixel main trigger pos or neg over thres."""
 
-    BSUB_MASK_LOW = 2
+    LOW = 2
     """Mask update when this pixel Main or lower trigger pos or neg over thres."""
 
-    BSUB_MASK_FIXED = 3
+    FIXED = 3
     """Never update, used Fixed baseline value with no adjustment"""
 
-    BSUB_MASK_MAIN_OR4NEB = 5
+    MAIN_OR_4_NEIGHBOURS = 5
     """Mask update when this pixel main or any of 4 neighbours  main triggers pos."""
 
-    BSUB_MASK_MAIN_OR8NEB = 0xD
+    MAIN_OR_8_NEIGHBOURS = 0xD
     """Mask update when this pixel main or any of 8 neighbours  main triggers pos."""
 
-    BSUB_MASK_LOW_OR4NEB = (0x6)
+    LOW_OR_4_NEIGHBOURS = (0x6)
     """Mask update when this pixel main or Low  or any of 4 neighbours  main triggers pos."""
 
-    BSUB_MASK_LOW_OR8NEB = (0xE)
+    LOW_OR_8_NEIGHBOURS = (0xE)
     """Mask update when this pixel main or Low  or any of 8 neighbours  main triggers pos."""
 
-    BSUB_MASK_MAIN_OR_LOW_AND4NEB = (0x7)
+    MAIN_OR_LOW_AND_4_NEIGHBOURS = (0x7)
     """Mask update when this pixel main or (low and any of 4 neighbours  main triggers pos)."""
 
-    BSUB_MASK_MAIN_OR_LOW_AND8NEB = (0xF)
+    MAIN_OR_LOW_AND_8_NEIGHBOURS = (0xF)
     """Mask update when this pixel main or (low and any of 8 neighbours  main triggers pos)"""
 
 

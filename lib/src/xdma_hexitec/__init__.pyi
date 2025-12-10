@@ -16,6 +16,37 @@ class HexitecUdpRxConnection(IntEnum):
     Loopback = 1
     FromHost = 2
 
+class HexitecITfgMode(IntEnum):
+    """Enum defining the behavior of the ITFG, if used"""
+
+    Immediate = 0
+    """Run programmed burst of frames starting immediately"""
+
+    SWFirst = 1
+    """wait for rising edge of SWTrig and then run all the frames with no gaps."""
+
+    SWCountedEach = 2
+    """Wait for software trigger for each frame, accumulating programmed number of input frames and then discarding unused input frames until next SW trigger."""
+
+    SWIncEach = 3
+    """"Wait for software trigger for start of first frame, accumulating frames until next rising edge of SW Trig.""""
+
+    SWGated = 4     
+    """Count While SW trigger is high, disable when increment time frame on falling edge."""
+
+    HWFirst   = 9     
+    """Wait HW Trig then run burst of nTF x nDetFrames """
+
+    HWCountedEach = 10     
+    """Wait for hardware trigger for each frame, accumulating programmed number of input frames and then discarding unused input frames until next trigger."""
+
+    HWIncEach  = 11     
+    """Wait for hardware trigger for start of first frame, accumulating frames until next rising edge of Trig."""
+
+    HWGated   = 12      
+    """Count While HW trigger is high, disable when increment time frame on falling edge."""
+
+
 
 class XDmaHexitec:
     """
@@ -114,12 +145,12 @@ class XDmaHexitec:
         """
 
         """
-    def setChipReg(self) -> None:
+    def setChipReg(self, chip: int, offset: int, value: int) -> None:
         """
 
         """
-    def getChipReg(self) -> None:
-        """
+    def getChipReg(self, chip: int, offset: int) -> int:
+        """Get Value of Chip Register
 
         """
     def writeGlobRegs(self) -> None:
@@ -156,8 +187,15 @@ class XDmaHexitec:
                     firstRow: int,
                     numRow: int,
                     value: int) -> None:
-        """
+        """Write a fixed value to multiple Hexitec per pixel LUTs currently in the baseline, linearity and trigger threshold processing block.
 
+        :param chip: Chip number  or -1 to duplicate to all chips.
+        :param region: Region number, {@link HEXITEC_REGION_BASELINE} to {@link HEXITEC_REGION_LIN_C}
+        :param firstCol: First column of sensor 0..HEXITEC_NUM_COLS-1
+        :param numCols: Number of columns of sensor 1..HEXITEC_NUM_COLS.
+        :param firstRow: First row of sensor 0..HEXITEC_NUM_ROWS-1
+        :param numRows: Number of rows of sensor 1..HEXITEC_NUM_ROWS.
+        :param value: Value to write
         """
     def writePixelLUT(self) -> None:
         """
@@ -345,10 +383,10 @@ class XDmaHexitec:
                         useAbsTrig: bool) -> None:
         """Setup baseline subtraction feedback and tracking features
 
-        :param chip         Chip number or -1 to duplicate to all chips.
-        :param maskMode     The mask mode controls when the error signal from the subtracted baseline is fed back to update the baseline estimate. See HEXITEC_BSUB_MASK_DEFS
-        :param divideCode   Sets the scaling (division) applied to the error from 0 applied to adjust the baseline estimate. See HEXITEC_BSUB_DIVIDE_DEFS 
-        :param enbDither    Enable dither (ramping bits below binary point) used in linearity correction.
+        :param chip:         Chip number or -1 to duplicate to all chips.
+        :param maskMode:     The mask mode controls when the error signal from the subtracted baseline is fed back to update the baseline estimate. See HEXITEC_BSUB_MASK_DEFS
+        :param divideCode:   Sets the scaling (division) applied to the error from 0 applied to adjust the baseline estimate. See HEXITEC_BSUB_DIVIDE_DEFS 
+        :param enbDither:    Enable dither (ramping bits below binary point) used in linearity correction.
 
         """
     def loadBaseline(self) -> None:
@@ -695,15 +733,23 @@ class XDmaHexitec:
 
         """
     def iTfgDisable(self) -> None:
-        """
+        """Disabled the Internal Time Frame Generator
 
         """
     def iTfgTrigger(self) -> None:
-        """
+        """Manually Trigger the Internal Time Frame generator, it its awaiting a software signal
 
         """
-    def iTfgSetup(self) -> None:
-        """
+    def iTfgSetup(self, mode: HexitecITfgMode, extTrigSrc: int, invertExtTrig: bool, inpFramesPerTF: int, numTF: int, numCycles: int) -> None:
+        """Setup the Internal Time Frame Generator to output a specified number of time frames, based
+        on the number of input frames.
+
+        :param mode: Define how the ITFG gets triggered and how the frames are output on trigger
+        :param extTrigSrc: the trigger pointer. Always set to 1
+        :param invertExtTrig: Invert the trigger logic, so LOW<=>HIGH for signals
+        :param inpFramesPerTF: Number of input Frames requied to output a full Time Frame
+        :param numTf: The number of time frames to output
+        :param numCycles: The number of cycles to run. 
 
         """
     def iTfgReadStatus(self) -> None:

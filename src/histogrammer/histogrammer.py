@@ -2,9 +2,10 @@ import logging
 import os
 
 from typing import Literal, TypeVar, NamedTuple
-from tornado.ioloop import PeriodicCallback
+from tornado.ioloop import PeriodicCallback, IOLoop
 
-from xdma_hexitec import XDmaHexitec, defines, HexitecUdpRxConnection
+from xdma_hexitec import XDmaHexitec, defines
+from xdma_hexitec import HexitecUdpRxConnection, HexitecITfgMode
 
 from .base_controller import BaseError
 
@@ -45,12 +46,24 @@ class Histogrammer:
     """Maximum Threshold Value"""
     THRES_MIN = -4096
     """Minimum Threshold Value"""
+
+    NUM_ROWS = 80
+    NUM_COLS = 80
     
     def __init__(self, options: dict[str, str]) -> None:
         
         self.hexitec: XDmaHexitec = None
 
         self.status: ConnectionStatus = "disconnected"
+
+        # AQUISITION CONTROLS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # TODO: if both runTimer and input_frames are defined, which takes priority?
+        self.runTimer = 0
+        """If > 0, stops a run after that many seconds"""
+        self.input_frames = 0
+        """Number of Input Frames per output Time Frame. If set, stops an aquisition after that many frames are received"""
+        self.output_frames = 1
+        """Number of Output Time Frames"""
         
         # PCI DEVICE SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.useQdma = options.get("useqdma", "").lower() in ["true", "1", "yes"]
@@ -83,6 +96,11 @@ class Histogrammer:
         self.thres_main = (-35, 35)
         self.thres_low = (-25, 25)
         self.thres_abs = (1, 1000)
+
+        # BASELINE VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        self.baselineMask = defines.BaselineMask.FIXED
+        self.baselineDiv = defines.BaselineDivide.BSUB_DIVIDE1024
+        self.enableDither = False
 
         self.chip_select = -1  # -1 applies changes to all chips
         self.stream_select = -1  # -1 applies to all data streams
@@ -157,26 +175,54 @@ class Histogrammer:
         self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_NEG_NEB_RECIP, self.stream_select)
         self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_L_POS_RECIP, self.stream_select)
         self._run_method(self.hexitec.initCShareLUTs, self.chip_select, self.stream_select)
-
+        
+        # init baseline Lookup Table to 0
+        self._run_method(self.hexitec.setPixelLUT,
+                         self.chip_select, defines.Region.REGION_BASELINE,
+                         0, self.NUM_COLS,
+                         0, self.NUM_ROWS, 0)
         self._run_method(self.hexitec.initPixelMask, self.chip_select)
         
         self._run_method(self.hexitec.setLinearityOne, self.chip_select, 0.0)
 
+
     def start_run(self):
         """Make the histogrammer begin outputting Histograms"""
         #TODO: other setup that might have to happen prior to enabling the run?
+        self.status = "configuring"
+
+        self.loadBaseline()  # could we use python yield to resume the run starting after the looping waitLoadBaseline method completes?
+
         
+        
+    def complete_start_run(self):
+        
+        if self.input_frames:
+            logging.debug("Setting up Internal Time Frame Generator")
+            self.hexitec.iTfgSetup(HexitecITfgMode.SWFirst, 1, True, self.input_frames, self.output_frames, 1)
+            logging.debug("Total histograms to be generated: {}".format(self.input_frames*self.output_frames))
+        else:
+            logging.debug("Disabling ITFG")
+            self.hexitec.iTfgDisable()
+
         # reset the udp packet counters
         self.hexitec.udpResetCounts(False)
+
+        # enable the histogramming by disabling any test pattern stuff
         self.hexitec.enableHist()
 
         # set the run reg to 1 to start producing histograms
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 1)
         self.status = "running"
+
+        if self.input_frames:
+            pass  # ITFG status read loop. Stop run when ITFG status is FINISHED
+        elif self.runTimer:
+            IOLoop.current().call_later(self.runTimer, self.stop_run)
         self.counter_callback.start()
 
     def stop_run(self):
-
+        logging.debug("Stopping Run")
         self.counter_callback.stop()
         # making sure to read the current frame counts before turning off the run bit
         # as turning off the bit flushes the histograms and we lose this information
@@ -184,32 +230,96 @@ class Histogrammer:
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
         self.status = "completed"
 
-    def setBaseline(self, mask: defines.BaselineMask, divide: defines.BaselineDivide, enableDither: bool):
-        """Set the Baseline Mode"""
+    def setBaseline(self, mask: defines.BaselineMask | None = None,
+                    divide: defines.BaselineDivide | None = None,
+                    enableDither: bool | None = None):
+        """Set the Baseline Mode
+        
+        :param mask: Set the Mask Mode, which controls when the error signal from the subtracted baseline is used to update the baseline estimage
+        :param divide: Set the Baseline scaling applied to the error for adjusting the baseline estimate.
+        :param enableDither: Enable or disable dithering (ramping bits below 0) for linearity correction
+        """
+
+        if mask is None:
+            mask = self.baselineMask
+        if divide is None:
+            divide = self.baselineDiv
+        if enableDither is None:
+            enableDither = self.enableDither
+
+
         # if the mask is set to fixed, we dont use the absolute trigger
-        useAbsTrig = not (mask == defines.BaselineMask.BSUB_MASK_FIXED)
-        try:
-            self.hexitec.setBaselineMode(self.chip_select, mask, divide, enableDither, useAbsTrig)
-        except RuntimeError as e:
-            logging.error("Error Setting Baseline: %s", e)
-            raise InternalLibException("{}".format(e))
-    
-    def setClusterMode(self, clusterMode: defines.ClusterMode, autoTrigMode: defines.AutoTrigMode):
+        useAbsTrig = not (mask == defines.BaselineMask.FIXED)
+        
+        self._run_method(self.hexitec.setBaselineMode, 
+                         self.chip_select, mask, divide, enableDither, useAbsTrig)
+
+    def loadBaseline(self):
+        """Loading Baseline. Will use a callback loop to wait till baseline loaded before starting a proper run.
+        This function is being written here rather than using the built in one from c++ to avoid using blocking
+        waitLoadBaseline() method
+        """
+        
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
+        for chip in range(self.hexitec.getNumChips()):
+            baselineReg = self.hexitec.getChipReg(chip, defines.ChipRegisters.BASESUB)
+            self.hexitec.setChipReg(chip, defines.ChipRegisters.BASESUB, baselineReg & ~ defines.BaselineChipVals.LOAD)
+            self.hexitec.setChipReg(chip, defines.ChipRegisters.BASESUB, baselineReg | defines.BaselineChipVals.LOAD)
+        
+        dataPath = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_DATA_PATH)
+        dataPath = dataPath | (1<<14)  #TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_SHORT_BURST_MODE
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, dataPath)
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_FRAME_BURST_LENGTH, 2)
+        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 1)
+
+        IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, 0)
+        # wait for baseline to finish loading. ioloop of some sort
+
+    def waitLoadBaseline(self, dataPath, loopCount): # TODO: add a timeout to avoid it getting stuck here
+        """Loop waiting for the baseline to finish loading, before allowing the run to start proper"""
+        mask = 0xFFFFFFFFFFFFFFF
+        status = self.hexitec.getGlobReg64(defines.GlobalRegisters.GLB_LOADING_BL)
+        
+        timeout = 20000
+        # if (status & mask) and loopCount < 1000:
+        #     IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, loopCount + 1)
+        # else:
+        if not (status & mask) or loopCount > timeout:
+            # loading complete
+            if loopCount > timeout:
+                logging.warning("Timed out waiting for Baseline to load. This may mean data is not being sent to the Histogrammer")
+            self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
+            dataPath = dataPath & ~ (1 << 14) #TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_SHORT_BURST_MODE
+            self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, dataPath)
+
+            self.complete_start_run()
+        else:
+            IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, loopCount + 1)
+
+
+    def setClusterMode(self, clusterMode: defines.ClusterMode | None = None, autoTrigMode: defines.AutoTrigMode | None = None):
         """Sets the cluster Mode and the auto triggering.
         
-        :param clusterMode: The mode which describes how and which clusters are chosen
-        :param autoTrigMode: Sets the frequency at which the pixels are triggered
+        :param clusterMode: The mode which describes how and which clusters are chosen.
+        Defaults to using self.clusterMode
+        :param autoTrigMode: Sets the frequency at which the pixels are triggered.
+        Defaults to using self.autoTrigMode
         """
+
+        if clusterMode is None:
+            clusterMode = self.clusterMode
+        if autoTrigMode is None:
+            autoTrigMode = self.autoTrigMode
 
         self._run_method(self.hexitec.setClusterMode, self.chip_select, clusterMode, autoTrigMode)
 
-    def setClusterTypes(self, clusterType: defines.ClusterEnable = defines.ClusterEnable.ALL):
+    def setClusterTypes(self, clusterType: defines.ClusterEnable = None):
         """Sets the cluster pattern type(s).
         
         :param clusterType: A Flag of all cluster patterns to enable, bitwise ORd together. If this value is 0, it is overwritten to the default that enables all patterns
         """
 
-        if clusterType not in defines.ClusterEnable:
+        if clusterType is None or clusterType not in defines.ClusterEnable:
             clusterType = defines.ClusterEnable.ALL
 
         self._run_method(self.hexitec.setClusterTypes, self.chip_select, clusterType)

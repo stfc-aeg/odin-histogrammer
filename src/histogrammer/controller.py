@@ -9,6 +9,7 @@ from enum import Enum
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from histogrammer.histogrammer import Histogrammer, ConnectionStatus, InternalLibException
 from xdma_hexitec.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode, RunMode, NumBins
+from xdma_hexitec.defines import BaselineDivide, BaselineMask
 
 class HistogramException(BaseError):
     """Simple exception class to wrap lower-level exceptions."""
@@ -33,10 +34,15 @@ class HistogramController(BaseController):
             },
             "acquisition": {
                 "run": (lambda: self.histogrammer.status == "running", self.setRun),
-                "detector_frames": (lambda: self.histogrammer.frame_counters.frameCount, None),
-                "raw_hits": (lambda: self.histogrammer.frame_counters.rawHitCount, None),
-                "udp_frames": (lambda: self.histogrammer.frame_counters.inputTimeFrame, None),
-                "complete_time_frames": (lambda: self.histogrammer.frame_counters.finishedTimeFrame, None)
+                "timer": (lambda: self.histogrammer.runTimer, partial(self.setValue, "runTimer")),
+                "input_frames": (lambda: self.histogrammer.input_frames, partial(self.setValue, "input_frames")),
+                "output_frames": (lambda: self.histogrammer.output_frames, partial(self.setValue, "output_frames")),
+                "count": {
+                    "detector_frames": (lambda: self.histogrammer.frame_counters.frameCount, None),
+                    "raw_hits": (lambda: self.histogrammer.frame_counters.rawHitCount, None),
+                    "udp_frames": (lambda: self.histogrammer.frame_counters.inputTimeFrame, None),
+                    "complete_time_frames": (lambda: self.histogrammer.frame_counters.finishedTimeFrame, None)
+                }
             },
             "udp": {
                 "setup": (None, lambda x: self.setupUDP()),
@@ -88,6 +94,17 @@ class HistogramController(BaseController):
                             partial(self.setThreshold, "lower")),
                     "absolute": (lambda: self.histogrammer.thres_main,
                                  partial(self.setThreshold, "main"))
+                },
+                "baseline": {
+                    "mask": (lambda: self.enumToString(self.histogrammer.baselineMask),
+                             partial(self.setBaselineMode, "baselineMask"),
+                             {"allowed_values": [self.enumToString(val) for val in BaselineMask]}),
+                    "divide": (lambda: int("".join(filter(str.isdigit, self.histogrammer.baselineDiv.name))),
+                             partial(self.setBaselineMode, "baselineDiv"),
+                             {"allowed_values": [int("".join(filter(str.isdigit, val.name))) for val in BaselineDivide]}),
+                    "dither":(lambda: self.histogrammer.enableDither,
+                              partial(self.setBaselineMode, "enableDither"))
+
                 }
             }
         }
@@ -107,6 +124,12 @@ class HistogramController(BaseController):
         except (ParameterTreeError, InternalLibException) as error:
             logging.error(error)
             raise HistogramException(error)
+        except AttributeError as error:
+            logging.error(error)
+            if self.histogrammer.hexitec is None or self.histogrammer.status == "disconnected":
+                raise HistogramException("Histogrammer not connected")
+            else:
+                raise HistogramException(error)
         
     def initialize(self, adapters) -> None:
         return super().initialize(adapters)
@@ -186,9 +209,11 @@ class HistogramController(BaseController):
                     ))
             self.histogrammer.thres_main = value
 
-        self.histogrammer.setTriggerThreshold(threshold, (0, 80), (0, 80), value)
+        self.histogrammer.setTriggerThreshold(threshold,
+                                              (0, self.histogrammer.NUM_COLS),
+                                              (0, self.histogrammer.NUM_ROWS), value)
 
-    def setCluster(self, setting: Literal["clusterMode", "autoTrigMode", "clusterType"],
+    def setCluster(self, setting: Literal["clusterMode", "autoTrigMode"],
                    value: str):
         """Set the Clustering Options in the histogrammer class
         
@@ -197,18 +222,12 @@ class HistogramController(BaseController):
         :param value: the string name of the value being set. Will be converted into the relevent ENUM value
         """
 
-        if setting == "clusterType":
-            # TODO: Special Case cause its a set of flags. List all individually with toggles?
-            val: ClusterEnable = ClusterEnable[self.stringToEnum(value)]
-            self.setValue(setting, val)
-            self.histogrammer.setClusterTypes(self.histogrammer.clusterType)
-            return
-        elif setting == "clusterMode":
+        if setting == "clusterMode":
             val: ClusterMode = ClusterMode[self.stringToEnum(value)]
         else:
             val: AutoTrigMode = AutoTrigMode[self.stringToEnum(value)]
         self.setValue(setting, val)
-        self.histogrammer.setClusterMode(self.histogrammer.clusterMode, self.histogrammer.autoTrigMode)
+        self.histogrammer.setClusterMode()
 
     def setHistFormat(self, setting: Literal["numBins", "mappedMode", "runMode"], value: str | int):
 
@@ -240,6 +259,21 @@ class HistogramController(BaseController):
             self.histogrammer.clusterType = self.histogrammer.clusterType | flag  # OR with flag val to set flag to 1
         else:
             self.histogrammer.clusterType = self.histogrammer.clusterType & ~flag  # AND with inverted flag to set bit to 0
+
+        self.histogrammer.setClusterTypes(self.histogrammer.clusterType)
+
+    def setBaselineMode(self, setting: Literal["enableDither", "baselineDiv", "baselineMask"], value: str | bool | int):
+
+        if setting == "baselineMask":
+            val: BaselineMask = BaselineMask[self.stringToEnum(value)]
+        elif setting == "baselineDiv":
+            val: BaselineDivide = BaselineDivide["BSUB_DIVIDE{}".format(value)]
+        else:
+            val: bool = value
+
+        self.setValue(setting, val)
+
+        self.histogrammer.setBaseline()
         
 
 
