@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any, Dict
 
 class BaseError(Exception):
     pass
@@ -6,11 +7,11 @@ class BaseError(Exception):
 class BaseController(ABC):
 
     @abstractmethod
-    def __init__(self, options):
+    def __init__(self, options: Dict[str, str]):
         pass
 
     @abstractmethod
-    def initialize(self, adapters) -> None:
+    def initialize(self, adapters: Dict[str, object]) -> None:
         pass
 
     @abstractmethod

@@ -204,12 +204,31 @@ class XDmaHexitec:
         :param numRows: Number of rows of sensor 1..HEXITEC_NUM_ROWS.
         :param value: Value to write
         """
-    def writePixelLUT(self) -> None:
-        """
+
+    def writePixelLUT(self, chip: int, region: int, firstCol: int, numCols: int, firstRow: int, numRows: int, data: list[int]) -> None:
+        """Write array of value to a Hexitec per pixel LUTs currently in the baseline, linearity and trigger threshold processing block
+        The data is organised as data[numRows][numCols].
+
+        :param chip:     Chip number  or -1 to duplicate to all chips. Note in this case the data array for 1 chip is is replicated for all chips
+        :param region:   Region number, {@link HEXITEC_REGION_BASELINE} to {@link HEXITEC_REGION_LIN_C}
+        :param firstCol: First column of sensor 0..HEXITEC_NUM_COLS-1
+        :param numCols:  Number of columns of sensor 1..HEXITEC_NUM_COLS.
+        :param firstRow: First row of sensor 0..HEXITEC_NUM_ROWS-1
+        :param numRows:  Number of rows of sensor 1..HEXITEC_NUM_ROWS.
+        :param data:     Data to write. Note order.
 
         """
-    def readPixelLUT(self) -> None:
-        """
+    def readPixelLUT(self, chip: int, region: int, firstCol: int, numCols: int, firstRow: int, numRows: int) -> list[int]:
+        """Read array of values from a Hexitec per pixel LUTs currently in the baseline, linearity and trigger threshold processing block
+        The data is organised as data[numRows][numCols]
+
+        :param chip:     Chip number.
+        :param region:   Region number, {@link HEXITEC_REGION_BASELINE} to {@link HEXITEC_REGION_LIN_C}
+        :param firstCol: First column of sensor 0..HEXITEC_NUM_COLS-1
+        :param numCols:  Number of columns of sensor 1..HEXITEC_NUM_COLS.
+        :param firstRow: First row of sensor 0..HEXITEC_NUM_ROWS-1
+        :param numRows:  Number of rows of sensor 1..HEXITEC_NUM_ROWS.
+
 
         """
     def setPixelLin(self) -> None:
@@ -224,16 +243,36 @@ class XDmaHexitec:
         """
 
         """
-    def setSharedLUT(self) -> None:
-        """
+    def setSharedLUT(self, chip: int, region: int, stream: int, first: int, num: int, value: int) -> None:
+        """Write fixed value (usually 0) to all locations of a Hexitec Charge Sharing correction LUTs. Currently shared across all pixels.
+
+        :param chip: Chip number  or -1 to duplicate to all chips.
+        :param region: Region number, see Region Enum for possible values
+        :param stream: Processing stream (which handles 2 pairs of columns (total 4 columns). Usually -1 to replicate to all.
+        :param first: First offset within LUT, usually 0,
+        :param num: Number of point to write (usually full table)
+        :param value: Value to write
 
         """
-    def writeSharedLUT(self) -> None:
-        """
+    def writeSharedLUT(self, chip: int, region: int, stream: int, first: int, num: int, data: list[int]) -> None:
+        """Write array of value to a Hexitec Charge Sharing correction LUTs. Currently shred across all pixels.
+
+        :param chip: Chip number  or -1 to duplicate to all chips. Note in this case the data array for 1 chip is is replicated for all chips
+        :param region: Region number, see region Enum for possible values
+        :param stream: Processing stream (which handles 2 pairs of columns (total 4 columns). Usually -1 to replicate to all.
+        :param first: First offset within LUT, usually 0,
+        :param num: Number of point to write (usually full table)
+        :param data: Pointer to data to write.
 
         """
-    def readSharedLUT(self) -> None:
-        """
+    def readSharedLUT(self, chip: int, region: int, stream: int, first: int, num: int) -> list[int]:
+        """	Read array of values from a Hexitec Charge Sharing correction LUTs. Currently shared across all pixels.
+
+        :param chip: Chip number.
+        :param region: Region number, see Region Enum
+        :param stream: Processing stream (which handles 2 pairs of columns (total 4 columns).
+        :param first: First offset within LUT, usually 0,
+        :param num: Number of point to read (usually full table)
 
         """
     def initRecipLUT(self,
@@ -267,9 +306,16 @@ class XDmaHexitec:
     def loadLinearityGainAscii(self,
                                chip: int,
                                fullName: str,
-                               scaleLinearity: float = 1.0,
-                               offsetADUs: float = 0.0) -> None:
-        """
+                               scaleLinearity: float,
+                               offsetADUs: float) -> None:
+        """Load linearity correction set to be a simple gain scaling.
+        The values in the file must read row 0,: col 0...79, row 1: col 0...79 etc.
+        The values are ASCII doubles around 1.0, typically 1.2 for Hexitec
+
+        :param chip: The chip number. -1 to apply to all chips
+        :param fullName: the full path name to the file
+        :param scaleLinearity: The scaling to apply to the gain correction
+        :param offsetADUs: the linearity offset
 
         """
     def loadLinearityAscii(self,
@@ -310,12 +356,13 @@ class XDmaHexitec:
         :param chip: Chip Number. -1 to apply to all chips
         :param Thres: Threshold (0...4095)
         """
-    def loadBadPixelsTrigAscii(self) -> None:
+    def loadBadPixelsTrigAscii(self, fullName: str) -> None:
+        """Load a config file defining pixels which should not be enabled in the Main Trigger
+        Each line of the provided 
         """
-
-        """
-    def loadBadPixelsOutputAscii(self) -> None:
-        """
+    def loadBadPixelsOutputAscii(self, fullName: str) -> None:
+        """Load a config file defining pixels which should not be considered a part of the output
+        These pixels can still use the main trigger for charge sharing events.
 
         """
     def dmaReset(self) -> None:
@@ -504,7 +551,13 @@ class XDmaHexitec:
         """
 
     def setCShareMode(self) -> None:
-        """
+        """  Enable or disable various charge sharing corrections.
+
+        :param chip:       Chip number or -1 to duplicate to all chips.
+        :param enbEdgePos: Enable charge summing correction where signal shares to give 2 positive signals to a neighbour on a side.
+        :param enbNegNeb:  Enable charge summing correction where signal shares to give 1 positive signals  with a negative neighbour.
+        :param disSumming: Disable charge summing, particularly for the special case of isolating the Fluorescence peaks
+        :param disAdjPosn: Disable the adjustment of position again particularly for the special case of isolating the Fluorescence peaks
 
         """
     def setClusterTypes(self,

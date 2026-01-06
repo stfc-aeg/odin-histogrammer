@@ -5,6 +5,7 @@ from .base_controller import BaseError, BaseController
 from functools import partial
 from typing import get_args, Literal, Type
 from enum import Enum
+from os import path
 
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from histogrammer.histogrammer import Histogrammer, InternalLibException
@@ -25,6 +26,20 @@ class HistogramController(BaseController):
 
         self.histogrammer = Histogrammer(options)
 
+        self.config_dir = options.get("config_dr", "test/config/files")
+        
+        if not path.exists(self.config_dir):
+            logging.warning("Config File Directory not found: %s", self.config_dir)
+        elif not path.isdir(self.config_dir):
+            logging.warning("Config File Directory path is not a Directory: %s", self.config_dir)
+        
+        
+        # ascii config filenames
+        self.fname_badPixelTrig = ""
+        self.fname_badPixelOut = ""
+        self.fname_gain = ""
+        self.fname_linearity = ""
+
 
         tree = {
             "device": {
@@ -37,7 +52,7 @@ class HistogramController(BaseController):
                 "run": (lambda: self.histogrammer.status == "running", self.setRun),
                 "mode": (lambda: self.histogrammer.acqMode, partial(self.setValue, "acqMode"),
                          {"allowed_values": list(get_args(AcquisitionMode))}),
-                "timer": (lambda: self.histogrammer.runTimer, partial(self.setValue, "runTimer")),
+                "duration": (lambda: self.histogrammer.runTimer, partial(self.setValue, "runTimer")),
                 "input_frames": (lambda: self.histogrammer.input_frames, partial(self.setValue, "input_frames")),
                 "output_frames": (lambda: self.histogrammer.output_frames, partial(self.setValue, "output_frames")),
                 "count": {
@@ -48,8 +63,10 @@ class HistogramController(BaseController):
                 },
                 "itfg": {
                     "status": (lambda: self.histogrammer.itfg_status["status"], None),
-                    "input_frames": (lambda: self.histogrammer.itfg_status["input_frame"], None),
-                    "output_frames": (lambda: self.histogrammer.itfg_status["output_frame"], None)
+                    "remaining_in": (lambda: self.histogrammer.itfg_status["input_frame"], None,
+                                     {"description": "The number of input frames remaining for the current Histogram"}),
+                    "num_out": (lambda: self.histogrammer.itfg_status["output_frame"], None,
+                                {"description": "The Number of Histograms created"})
                 }
             },
             "udp": {
@@ -84,6 +101,21 @@ class HistogramController(BaseController):
                                        {"allowed_values": [self.enumToString(val) for val in AutoTrigMode]})
 
                 },
+                "charge_sharing": {
+                    "positive_edge": (True, None),
+                    "negative_neighbour": (True, None),
+                    "sum_enable": (True, None),
+                    "position_adjust": (True, None)
+                    
+                },
+                "linearity_correction": {
+                    "offset": (lambda: self.histogrammer.lin_offset, self.setLinOffset),
+                    "scale": (lambda: self.histogrammer.lin_scale, partial(self.setValue, "lin_scale")),
+                    "gain_filename": (lambda: self.fname_gain, partial(setattr, self, "fname_gain")),
+                    "lin_filename": (lambda: self.fname_linearity, partial(setattr, self, "fname_linearity")),
+                    "gain_load": (None, partial(self.loadLUTAsciiFile, "gain")),
+                    "lin_load": (None, partial(self.loadLUTAsciiFile, "linearity"))
+                },
                 "hist_format": {
                     "num_bins": (lambda: self.histogrammer.numBins,
                                  partial(self.setHistFormat, "numBins"),
@@ -93,15 +125,23 @@ class HistogramController(BaseController):
                                  {"allowed_values": [self.enumToString(val) for val in RunMode]}),
                     "mapped_mode": (lambda: self.enumToString(self.histogrammer.mappedMode),
                                     partial(self.setHistFormat, "mappedMode"),
-                                    {"allowed_values": [self.enumToString(val) for val in MappedMode]})
+                                    {"allowed_values": [self.enumToString(val) for val in MappedMode]}),
+                    "bad_pixel_mask": {  # load file to define which pixel output to mask out
+                        "filename": (lambda: self.fname_badPixelOut, partial(setattr, self, "fname_badPixelOut")),
+                        "load": (None, partial(self.loadLUTAsciiFile, "badPixelOutput"))
+                    }
                 },
                 "thresholds": {  # set the trigger thresholds for the three available triggers
                     "main": (lambda: self.histogrammer.thres_main,
                              partial(self.setThreshold, "main")),
                     "low": (lambda: self.histogrammer.thres_low,
                             partial(self.setThreshold, "lower")),
-                    "absolute": (lambda: self.histogrammer.thres_main,
-                                 partial(self.setThreshold, "main"))
+                    "absolute": (lambda: self.histogrammer.thres_abs,
+                                 partial(self.setThreshold, "absolute")),
+                    "bad_pixel": {  # load a file that defines which pixels should have the main trig disabled
+                        "filename": (lambda: self.fname_badPixelTrig, partial(setattr, self, "fname_badPixelTrig")),
+                        "load": (None, partial(self.loadLUTAsciiFile, "badPixelTrig"))
+                    }
                 },
                 "baseline": {
                     "mask": (lambda: self.enumToString(self.histogrammer.baselineMask),
@@ -282,7 +322,39 @@ class HistogramController(BaseController):
         self.setValue(setting, val)
 
         self.histogrammer.setBaseline()
+
+    def setLinOffset(self, offset: float):
+        self.histogrammer.lin_offset = offset
+        self.histogrammer.addLinearityOffset(offset)
         
+    def loadLUTAsciiFile(self, setting: Literal["badPixelTrig", "badPixelOutput", "gain", "linearity"], _):
+        """Load various settings from ASCII files into their respective lookup tables
+
+        :param setting: which lookup table to load into
+        
+        """
+        #TODO: check for file existence/permissions before trying to use?
+
+        if setting == "badPixelTrig":
+            logging.debug("Disabling Triggers on Bad Pixels from file: %s", self.fname_badPixelTrig)
+            fullpath = path.join(self.config_dir, self.fname_badPixelTrig)
+            
+            self.histogrammer.loadBadPixelTrig(fullpath)
+        elif setting == "badPixelOutput":
+            logging.debug("Disabling Output on Bad Pixels from file: %s", self.fname_badPixelOut)
+            fullpath = path.join(self.config_dir, self.fname_badPixelOut)
+            self.histogrammer.loadBadPixelOutput(fullpath)
+        elif setting == "gain":
+            logging.debug("Setting Gain LUT from file: %s", self.fname_gain)
+            fullpath = path.join(self.config_dir, self.fname_gain)
+            self.histogrammer.loadGainCorrection(fullpath)
+        elif setting == "linearity":
+            logging.debug("Setting Linearity LUT from file: %s", self.fname_linearity)
+            fullpath = path.join(self.config_dir, self.fname_linearity)
+            self.histogrammer.loadLinearityCorrection(fullpath)
+
+    
+
 
 
 

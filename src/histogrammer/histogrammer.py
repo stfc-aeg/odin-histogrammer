@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 
 from typing import Literal, TypeVar, NamedTuple
 from tornado.ioloop import PeriodicCallback, IOLoop
@@ -108,6 +109,9 @@ class Histogrammer:
         self.chip_select = -1  # -1 applies changes to all chips
         self.stream_select = -1  # -1 applies to all data streams
 
+        # LINEARITY CORRECTION VALUES~~~~~~~~~~~~~~~~~~~~~~~~~
+        self.lin_offset = 0.0
+        self.lin_scale = 1.0
 
         self.inter_frame_gap = 4095
 
@@ -230,6 +234,12 @@ class Histogrammer:
             logging.debug("Disabling ITFG")
             self.hexitec.iTfgDisable()
 
+        start = datetime.now()
+        
+        self.hexitec.clearHistAll() # this is a blocking function that takes some time, I think
+        end = datetime.now()
+        logging.warning("Clear took {} seconds".format((end - start).total_seconds()))
+
         # reset the udp packet counters
         self.hexitec.udpResetCounts(False)
 
@@ -250,6 +260,14 @@ class Histogrammer:
 
     def stop_run(self):
         logging.debug("Stopping Run")
+        if self.hexitec is None or self.status != "running":
+            logging.warning("Histogrammer is not running, doing nothering in stop_run")
+            return
+        
+        # await data mover stop?
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
+        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
+
         self.counter_callback.stop()
         self.itfg_callback.stop()
         # making sure to read the current frame counts before turning off the run bit
@@ -376,6 +394,7 @@ class Histogrammer:
                              min(threshold))
         elif selectThreshold == "main":
             # setting the main trigger threshold
+            logging.warning("Setting Main Trigger Threshold Values. This will overwrite any Bad Pixel configuration")
             self._run_method(self.hexitec.setMainTriggerThres,
                              self.chip_select,
                              cols[0], cols[1],
@@ -455,6 +474,7 @@ class Histogrammer:
         destIP_int = self.getIntfromIP(destIP)
 
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
+        
         self.hexitec.setRxEthernetLoopback(0)  # disable ethernet loopback
         self._run_method(self.hexitec.udpRxSetup,
                          srcIP_int, destIP_int,
@@ -462,7 +482,8 @@ class Histogrammer:
                          connectType)
         
         for i in range(self.hexitec.getNumRxUdp()):
-            self.hexitec.setRxEthernetReg(i, 0x0020, 1)  # TODO: TEMP MAGIC NUMBER, MATCHES ETHERNET_PM_TICK_REG
+            if self.hexitec.getGeneration() == defines.HexitecGeneration.HexitecGenHexitec:
+                self.hexitec.setRxEthernetReg(i, 0x0020, 1)  # TODO: TEMP MAGIC NUMBER, MATCHES ETHERNET_PM_TICK_REG
 
         # disable any datamovers that might be running
         self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
@@ -578,12 +599,39 @@ class Histogrammer:
         inpFrame = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_INP_FRAME)
         timeFrame = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_TIME_FRAME)
         cycles = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_CYCLES)
-        logging.debug("{} {} {} {}".format(status, inpFrame, timeFrame, cycles))
+        # logging.debug("{} {} {} {}".format(status, inpFrame, timeFrame, cycles))
         return (status, inpFrame, timeFrame, cycles)
+    
 
-
+    def loadBadPixelTrig(self, filename: str):
+        """Load the Bad Pixel Trigger config file into the Main Trigger LUT.
+        This file defines specific pixels that should have triggering disabled
         
+        :param filename: full path to the ascii config file
+        """
+
+
+        logging.debug("Loading Bad Pixel Trigger File {}".format(filename))
+        self._run_method(self.hexitec.loadBadPixelsTrigAscii, filename)
         
+    def loadBadPixelOutput(self, filename: str):
+        """Load the Bad Pixel Output config file. Masks the output of defined pixels
+        from the histogram. Masked pixels can still activate triggers
+        
+        :param filename: full path to the ascii config file
+        """
+        self._run_method(self.hexitec.loadBadPixelsOutputAscii, filename)
 
+    def loadGainCorrection(self, filename: str):
+        """
+        
+        :param filename: full path to the ascii config file
+        """
+        self._run_method(self.hexitec.loadLinearityGainAscii, self.chip_select, 
+                         filename, self.lin_scale, self.lin_offset)
+        
+    def loadLinearityCorrection(self, filename: str):
 
+        self._run_method(self.hexitec.loadLinearityAscii, -1, filename, self.lin_scale)
 
+    # def badPixelTrig(self, row: int, col: int, enable: bool):

@@ -1,6 +1,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/native_enum.h>
 #include <pybind11/iostream.h>
+#include <pybind11/stl.h>
+
 #include "xdma_hexitec.h"
 // #include "circular_hdf_writer.h"
 
@@ -66,14 +68,14 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def("getGlobReg", &XDmaHexitec::getGlobReg)
         .def("getGlobReg64", &XDmaHexitec::getGlobReg64)
         .def("setPixelLUT", &XDmaHexitec::setPixelLUT)
-        .def("writePixelLUT", &XDmaHexitec::writePixelLUT)
-        .def("readPixelLUT", &XDmaHexitec::readPixelLUT)
+        // .def("writePixelLUT", &XDmaHexitec::writePixelLUT) // Wrapped methods below to handle array pointer
+        // .def("readPixelLUT", &XDmaHexitec::readPixelLUT)
         .def("setPixelLin", &XDmaHexitec::setPixelLin)
         .def("writePixelLin", &XDmaHexitec::writePixelLin)
         .def("readPixelLin", &XDmaHexitec::readPixelLin)
         .def("setSharedLUT", &XDmaHexitec::setSharedLUT)
-        .def("writeSharedLUT", &XDmaHexitec::writeSharedLUT)
-        .def("readSharedLUT", &XDmaHexitec::readSharedLUT)
+        // .def("writeSharedLUT", &XDmaHexitec::writeSharedLUT)  // Wrapped methods below to handle array pointer
+        // .def("readSharedLUT", &XDmaHexitec::readSharedLUT)
         .def("initRecipLUT", &XDmaHexitec::initRecipLUT)
         .def("initCShareLUTs", &XDmaHexitec::initCShareLUTs)
         .def("initPixelMask", &XDmaHexitec::initPixelMask)
@@ -201,6 +203,51 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def("readPixelMask", &XDmaHexitec::readPixelMask)
         .def_readwrite("m_debug", &XDmaHexitec::m_debug)
         ;
+
+    hexitec.def("readPixelLUT", [](XDmaHexitec &self, int chip, int region,
+                                    int firstCol, int numCol,
+                                    int firstRow, int numRow)
+    {
+        // create new array pointer to store data
+        uint32_t *x = new uint32_t [numCol*numRow];
+        self.readPixelLUT(chip, region, firstCol, numCol, firstRow, numRow, x);
+
+        //convert array into vector, so when returned it is auto-cast into a python list
+        std::vector<uint32_t> retVal(x, x + (numCol*numRow));
+
+        return retVal;
+    });
+    
+    hexitec.def("writePixelLUT", [](XDmaHexitec &self, int chip, int region,
+                                    int firstCol, int numCol,
+                                    int firstRow, int numRow,
+                                    std::vector<uint32_t> data)
+    {
+        uint32_t *x = data.data();  // convert vector (which started as python vector) into an array
+
+        self.writePixelLUT(chip, region, firstCol, numCol, firstRow, numRow, x);
+    });
+
+    hexitec.def("readSharedLUT", [](XDmaHexitec &self, int chip, int region,
+                                        int stream, int first, int num)
+    {
+        uint32_t *x = new uint32_t[num];
+        self.readSharedLUT(chip, region, stream, first, num, x);
+
+        std::vector<uint32_t> retVal(x, x+num);
+        return retVal;
+    });
+
+    hexitec.def("writeSharedLUT", [](XDmaHexitec &self, int chip, int region,
+                                        int stream, int first, int num,
+                                    std::vector<uint32_t> data)
+    {
+        uint32_t *x = data.data();
+
+        self.writeSharedLUT(chip, region, stream, first, num, x);
+    });
+    
+    
 
     // circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
     //     .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)
