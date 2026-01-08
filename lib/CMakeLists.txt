@@ -45,7 +45,8 @@ target_link_libraries(_core PUBLIC ${XDMA_HEXITEC_LIBRARIES}
                                    ${HDF5_HL_LIBRARIES}
                                    ${HDF5_C_LIBRARIES}
                                    ${HDF5_C_HL_LIBRARIES}
-                                   ${HDF5_CXX_LIBRARIES})
+                                   ${HDF5_CXX_LIBRARIES}
+                                   ${HDF5_CXX_HL_LIBRARIES})
 
 
 # This is passing in the version as a define just as an example
