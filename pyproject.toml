@@ -35,6 +35,6 @@ where = ["src"]
 [tool.setuptools_scm]
 # Optional settings for setuptools_scm
 root = "."
-write_to = "src/hexitec/_version.py"
+write_to = "src/histogrammer/_version.py"
 version_scheme = "no-guess-dev"
 local_scheme = "node-and-date"

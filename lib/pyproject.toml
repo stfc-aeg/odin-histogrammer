@@ -14,3 +14,6 @@ dependencies = ["pybind11"]
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
 build.verbose = true
+
+[tool.scikit-build.cmake.define]
+DET_SOFTWARE_ROOT = "/usr/lib/det-software"
