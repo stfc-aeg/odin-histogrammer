@@ -13,11 +13,13 @@ project(
 # which stores the directories of additonal CMake modules (ie findxdma_hexitec.cmake)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 find_package(HDF5 COMPONENTS C HL CXX REQUIRED)
 
 # ensure the env variable, if it exists, is set as a local CMAKE variable
-if(NOT DET_SOFTWARE_ROOT)
-  set(DET_SOFTWARE_ROOT $ENV{DET_SOFTWARE})
+if(DEFINED ENV{DET_SOFTWARE_ROOT})
+  set(DET_SOFTWARE_ROOT $ENV{DET_SOFTWARE_ROOT})
 endif()
 if(DET_SOFTWARE_ROOT)
   message(STATUS "DET Software Root set: ${DET_SOFTWARE_ROOT}")
@@ -63,21 +65,33 @@ add_library(hexitec_qdma OBJECT
   ${HEXITEC_ROOT_DIR}/qdma/dmactl_reg.c
 )
 
-target_include_directories(hexitec_qdma PUBLIC
+target_include_directories(hexitec_qdma PRIVATE
   ${HEXITEC_ROOT_DIR}/include
   ${HEXITEC_ROOT_DIR}/qdma
 )
 
-target_compile_options(hexitec_qdma PUBLIC
+target_compile_options(hexitec_qdma PRIVATE
   -D_FILE_OFFSET_BITS=64
   -D_GNU_SOURCE
   -D_LARGE_FILE_SOURCE
   -D_AIO_AIX_SOURCE 
   -fPIC
 )
+# DETFILE OBJECTS LIBRARY~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+add_library(hexitec_detfile OBJECT
+  ${DET_SOFTWARE_ROOT}/libs/src/detfile/detfile.c
+)
+
+target_include_directories(hexitec_detfile PRIVATE
+  ${DET_SOFTWARE_ROOT}/libs/src/detfile
+)
 
 # HEXITEC STATIC LIBRARY~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-add_library(hexitec STATIC $<TARGET_OBJECTS:hexitec_qdma> ${HEXITEC_SRC_FILES})
+add_library(hexitec STATIC
+  $<TARGET_OBJECTS:hexitec_qdma>
+  $<TARGET_OBJECTS:hexitec_detfile>
+  ${HEXITEC_SRC_FILES}
+)
 
 message(STATUS "Adding include dirs to hexitec")
 # add directories containing header files to xdma_hexitec
@@ -88,12 +102,6 @@ target_include_directories(hexitec PUBLIC
 
 
 message(STATUS "Adding Linked Libs to hexitec")
-find_library(DETFILE_LIBRARY
-  NAMES
-    detfile
-  PATHS
-    ${DET_SOFTWARE_ROOT}/libs/libs.linux.x86_64/lib
-)
 
 # link pre-existing objects to xdma_hexitec
 target_link_libraries(hexitec PUBLIC
