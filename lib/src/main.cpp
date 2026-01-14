@@ -199,8 +199,8 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def("getClusterGrade", &XDmaHexitec::getClusterGrade)
         .def("saveSettingsHdf5", &XDmaHexitec::saveSettingsHdf5)
         .def("loadSettingsHdf5", &XDmaHexitec::loadSettingsHdf5)
-        .def("writePixelMask", &XDmaHexitec::writePixelMask)
-        .def("readPixelMask", &XDmaHexitec::readPixelMask)
+        // .def("writePixelMask", &XDmaHexitec::writePixelMask) // Wrapped methods below to handle array pointer
+        // .def("readPixelMask", &XDmaHexitec::readPixelMask)
         .def_readwrite("m_debug", &XDmaHexitec::m_debug)
         ;
 

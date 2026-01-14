@@ -358,8 +358,13 @@ class XDmaHexitec:
 
         :param chip: Chip Number. -1 to apply to all chips
         """
-    def setPixelMask(self) -> None:
-        """
+    def setPixelMask(self, chip: int, col: int, row: int, disable: bool) -> None:
+        """Disable/Enable the specified pixel at [col, row].
+
+        :param chip: Chip Select. Set to -1 to apply to all chips.
+        :param col: The Column coord of the pixel. -1 to apply to all colums
+        :param row: The Row coord of the pixel. -1 to apply to all rows
+        :param disable: True to disable the pixel in the output. False to enable it.
 
         """
     def loadLinearityGainAscii(self,
@@ -1042,12 +1047,34 @@ class XDmaHexitec:
         :param scaleLinearity: Required for linearity corrections. defaults to 1.0
 
         """
-    def writePixelMask(self) -> None:
-        """
+    def writePixelMask(self, chip: int, 
+                      firstCol: int, numCols: int,
+                      firstRow: int, numRows: int,
+                      data: list[int]) -> None:
+        """Write output pixel masks to the specified pixels
+        This system independent array is packed/unpacked to suit the generation of Hexitec.
+
+        :param chip: Chip number or -1 to duplicate to all chips.
+        :param firstCol: First Column
+        :param numCols: Number of columns
+        :param firstRow: First row
+        :param numRows: Number of rows
+        :param data: The values to write to the pixels, ordered [row][col]
 
         """
-    def readPixelMask(self) -> None:
-        """
+    def readPixelMask(self, chip: int, 
+                      firstCol: int, numCols: int,
+                      firstRow: int, numRows: int) -> list[int]:
+        """Read output pixel mask for the specified pixels
+        This system independent array is packed/unpacked to suit the generation of Hexitec.
+
+        :param chip: Chip number.
+        :param firstCol: First Column
+        :param numCols: Number of columns
+        :param firstRow: First row
+        :param numRows: Number of rows
+
+        :return: A list ordered by [row][col] of the pixel masks requested
 
         """
 
