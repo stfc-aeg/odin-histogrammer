@@ -246,6 +246,30 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
 
         self.writeSharedLUT(chip, region, stream, first, num, x);
     });
+
+    hexitec.def("readPixelMask", [](XDmaHexitec &self, int chip,
+                                    int firstCol, int numCols,
+                                    int firstRow, int numRows)
+    {
+        uint8_t *x = new uint8_t[numCols*numRows];
+        self.readPixelMask(chip, firstCol, numCols, firstRow, numRows, x);
+        
+        //convert array into vector, so when returned it is auto-cast into a python list
+        std::vector<uint8_t> retVal(x, x + (numCols*numRows));
+
+        return retVal;
+
+    });
+
+    hexitec.def("writePixelMask", [](XDmaHexitec &self, int chip,
+                                     int firstCol, int numCols,
+                                     int firstRow, int numRows,
+                                     std::vector<uint8_t> data)
+    {
+        uint8_t *x = data.data();
+
+        self.writePixelMask(chip, firstCol, numCols, firstRow, numRows, x);
+    });
     
     
 
@@ -318,7 +342,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .export_values()
         .finalize();
 
-    py::native_enum<HexitecSaveRestore>(m, "HexitecSaveRestore", "enum.IntEnum")
+    py::native_enum<HexitecSaveRestore>(m, "HexitecSaveRestore", "enum.IntFlag")
         .value("AbsThresPos",     HexitecSaveRestore::HexitecSaveRestore_AbsThresPos)
         .value("AbsThresNeg",     HexitecSaveRestore::HexitecSaveRestore_AbsThresNeg)
         .value("AbsThres",        HexitecSaveRestore::HexitecSaveRestore_AbsThres)

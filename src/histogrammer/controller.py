@@ -5,7 +5,7 @@ from .base_controller import BaseError, BaseController
 from functools import partial
 from typing import get_args, Literal, Type
 from enum import Enum
-from os import path
+from os import path, listdir
 
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from histogrammer.histogrammer import Histogrammer, InternalLibException
@@ -39,6 +39,16 @@ class HistogramController(BaseController):
         self.fname_badPixelOut = ""
         self.fname_gain = ""
         self.fname_linearity = ""
+        self.fname_cshare_pos = ""
+        self.fname_cshare_pos_l3 = ""
+        self.fname_cshare_pos_mc = ""
+
+        self.fname_hdf = ""
+
+        self.allowed_file_names = [f for f in listdir(self.config_dir) 
+                                   if path.isfile(path.join(self.config_dir, f)) and 
+                                   (f.endswith(".txt") or f.endswith(".h5"))]
+        self.allowed_file_names.append("")
 
 
         tree = {
@@ -88,6 +98,10 @@ class HistogramController(BaseController):
                 }
             },
             "config": {
+                "hdf_filename": (lambda: self.fname_hdf, partial(setattr, self, "fname_hdf")),
+                "save_hdf": (None, self.save_hdf_settings),
+                "load_hdf": (None, self.load_hdf_settings),
+
                 "clustering": {  # cluster mode, the cluster patterns used, and the trigger mode for pixels
                     "mode": (lambda: self.enumToString(self.histogrammer.clusterMode),
                              partial(self.setCluster, "clusterMode"),
@@ -102,17 +116,29 @@ class HistogramController(BaseController):
 
                 },
                 "charge_sharing": {
-                    "positive_edge": (True, None),
-                    "negative_neighbour": (True, None),
-                    "sum_enable": (True, None),
-                    "position_adjust": (True, None)
-                    
+                    "positive_edge": (lambda: self.histogrammer.enbEdgePos, partial(self.SetChargeSharing, "enbEdgePos")),
+                    "negative_neighbour": (lambda: self.histogrammer.enbNegNeb, partial(self.SetChargeSharing, "enbNegNeb")),
+                    "sum_enable": (lambda: self.histogrammer.enbSumming, partial(self.SetChargeSharing, "enbSumming")),
+                    "position_adjust": (lambda: self.histogrammer.enbAdjPosn, partial(self.SetChargeSharing, "enbAdjPosn")),
+
+                    "pos_filename": (lambda: self.fname_cshare_pos, partial(setattr, self, "fname_cshare_pos"),
+                                     {"allowed_values": self.allowed_file_names}),
+                    "mc_filename": (lambda: self.fname_cshare_pos_mc, partial(setattr, self, "fname_cshare_pos_mc"),
+                                    {"allowed_values": self.allowed_file_names}),
+                    "l3_filename": (lambda: self.fname_cshare_pos_l3, partial(setattr, self, "fname_cshare_pos_l3"),
+                                    {"allowed_values": self.allowed_file_names}),
+                    "pos_load": (None, partial(self.loadLUTAsciiFile, "cshare_pos")),
+                    "mc_load": (None, partial(self.loadLUTAsciiFile, "cshare_mc")),
+                    "l3_load": (None, partial(self.loadLUTAsciiFile, "cshare_l3"))
+
                 },
                 "linearity_correction": {
                     "offset": (lambda: self.histogrammer.lin_offset, self.setLinOffset),
                     "scale": (lambda: self.histogrammer.lin_scale, partial(self.setValue, "lin_scale")),
-                    "gain_filename": (lambda: self.fname_gain, partial(setattr, self, "fname_gain")),
-                    "lin_filename": (lambda: self.fname_linearity, partial(setattr, self, "fname_linearity")),
+                    "gain_filename": (lambda: self.fname_gain, partial(setattr, self, "fname_gain"),
+                                      {"allowed_values": self.allowed_file_names}),
+                    "lin_filename": (lambda: self.fname_linearity, partial(setattr, self, "fname_linearity"),
+                                     {"allowed_values": self.allowed_file_names}),
                     "gain_load": (None, partial(self.loadLUTAsciiFile, "gain")),
                     "lin_load": (None, partial(self.loadLUTAsciiFile, "linearity"))
                 },
@@ -127,7 +153,8 @@ class HistogramController(BaseController):
                                     partial(self.setHistFormat, "mappedMode"),
                                     {"allowed_values": [self.enumToString(val) for val in MappedMode]}),
                     "bad_pixel_mask": {  # load file to define which pixel output to mask out
-                        "filename": (lambda: self.fname_badPixelOut, partial(setattr, self, "fname_badPixelOut")),
+                        "filename": (lambda: self.fname_badPixelOut, partial(setattr, self, "fname_badPixelOut"),
+                                     {"allowed_values": self.allowed_file_names}),
                         "load": (None, partial(self.loadLUTAsciiFile, "badPixelOutput"))
                     }
                 },
@@ -139,7 +166,8 @@ class HistogramController(BaseController):
                     "absolute": (lambda: self.histogrammer.thres_abs,
                                  partial(self.setThreshold, "absolute")),
                     "bad_pixel": {  # load a file that defines which pixels should have the main trig disabled
-                        "filename": (lambda: self.fname_badPixelTrig, partial(setattr, self, "fname_badPixelTrig")),
+                        "filename": (lambda: self.fname_badPixelTrig, partial(setattr, self, "fname_badPixelTrig"),
+                                     {"allowed_values": self.allowed_file_names}),
                         "load": (None, partial(self.loadLUTAsciiFile, "badPixelTrig"))
                     }
                 },
@@ -327,7 +355,8 @@ class HistogramController(BaseController):
         self.histogrammer.lin_offset = offset
         self.histogrammer.addLinearityOffset(offset)
         
-    def loadLUTAsciiFile(self, setting: Literal["badPixelTrig", "badPixelOutput", "gain", "linearity"], _):
+    def loadLUTAsciiFile(self, setting: Literal["badPixelTrig", "badPixelOutput", "gain", "linearity",
+                                                "cshare_pos", "cshare_mc", "cshare_l3"], _):
         """Load various settings from ASCII files into their respective lookup tables
 
         :param setting: which lookup table to load into
@@ -352,9 +381,28 @@ class HistogramController(BaseController):
             logging.debug("Setting Linearity LUT from file: %s", self.fname_linearity)
             fullpath = path.join(self.config_dir, self.fname_linearity)
             self.histogrammer.loadLinearityCorrection(fullpath)
+        elif setting == "cshare_pos":
+            logging.debug("Setting Charge Sharing Correction LUTS from file: %s", self.fname_cshare_pos)
+            fullpath = path.join(self.config_dir, self.fname_cshare_pos)
+            self.histogrammer.loadCShare_pos(fullpath)
+        elif setting == "cshare_mc":
+            logging.debug("Setting Charge Sharing Correction MC LUTS from file: %s", self.fname_cshare_pos_mc)
+            fullpath = path.join(self.config_dir, self.fname_cshare_pos_mc)
+            self.histogrammer.loadCShare_mc(fullpath)
+        elif setting == "cshare_l3":
+            logging.debug("Setting Charge Sharing Correction L3 LUTS from file: %s", self.fname_cshare_pos_l3)
+            fullpath = path.join(self.config_dir, self.fname_cshare_pos_l3)
+            self.histogrammer.loadCShare_l3(fullpath)
 
-    
+    def SetChargeSharing(self, setting: Literal["enbEdgePos", "enbNegNeb", "enbSumming", "enbAdjPosn"], value: bool):
+
+        setattr(self.histogrammer, setting, value)
+
+        self.histogrammer.setCShare()
 
 
-
-
+    def save_hdf_settings(self, _):
+        self.histogrammer.save_hdf_settings(self.fname_hdf)
+        
+    def load_hdf_settings(self, _):
+        self.histogrammer.load_hdf_settings(self.fname_hdf)

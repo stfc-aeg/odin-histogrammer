@@ -6,7 +6,7 @@ from typing import Literal, TypeVar, NamedTuple
 from tornado.ioloop import PeriodicCallback, IOLoop
 
 from xdma_hexitec import XDmaHexitec, defines
-from xdma_hexitec import HexitecUdpRxConnection, HexitecITfgMode
+from xdma_hexitec import HexitecUdpRxConnection, HexitecITfgMode, HexitecSaveRestore
 
 from .base_controller import BaseError
 
@@ -62,7 +62,7 @@ class Histogrammer:
         self.runTimer = 0
         """If > 0, stops a run after that many seconds"""
         self.input_frames = 2000000
-        """Number of Input Frames per output Time Frame. If set, stops an aquisition after that many frames are received"""
+        """Number of Input Frames per output Time Frame"""
         self.output_frames = 20
         """Number of Output Time Frames"""
 
@@ -97,9 +97,9 @@ class Histogrammer:
         self.runMode = defines.RunMode.NORMAL
 
         # THRESHOLD VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        self.thres_main = (-35, 35)
-        self.thres_low = (-25, 25)
-        self.thres_abs = (1, 1000)
+        self.thres_main = [-35, 35]
+        self.thres_low = [-25, 25]
+        self.thres_abs = [1, 1000]
 
         # BASELINE VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.baselineMask = defines.BaselineMask.FIXED
@@ -122,6 +122,12 @@ class Histogrammer:
             "output_frame": 0,
             "cycles": 0
         }
+
+        # CHARGE SHARING VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        self.enbEdgePos = True
+        self.enbNegNeb = True
+        self.enbSumming = True
+        self.enbAdjPosn = True
 
         self.counter_callback = PeriodicCallback(
             self.read_counters_callback,
@@ -632,6 +638,49 @@ class Histogrammer:
         
     def loadLinearityCorrection(self, filename: str):
 
-        self._run_method(self.hexitec.loadLinearityAscii, -1, filename, self.lin_scale)
+        self._run_method(self.hexitec.loadLinearityAscii, self.chip_select, filename, self.lin_scale)
 
     # def badPixelTrig(self, row: int, col: int, enable: bool):
+
+    def setCShare(self, enableEdgePos: bool| None = None, enableNegNeighbour: bool | None = None,
+                  enableSumming: bool | None = None, enablePositonAdjustment: bool | None = None):
+        """Enable/Disable the various Charge Sharing Correction options.
+        
+        :param enableEdgePos: Enable correction that shares positive signal with neighbours
+        :param enableNegNeighbour: Enable correction that shares signal with negative neighbours
+        :param enableSumming: Enable Any charge summing corrections.
+        :param enablePositonAdjustment: Enable position adjustment signal correction
+        """
+
+        if enableEdgePos is None:
+            enableEdgePos = self.enbEdgePos
+        if enableNegNeighbour is None:
+            enableNegNeighbour = self.enbNegNeb
+        if enableSumming is None:
+            enableSumming = self.enbSumming
+        if enablePositonAdjustment is None:
+            enablePositonAdjustment = self.enbAdjPosn
+
+        self._run_method(self.hexitec.setCShareMode, self.chip_select,
+                         enableEdgePos, enableNegNeighbour,
+                         not enableSumming, not enablePositonAdjustment)
+
+    def loadCShare_pos(self, filename: str):
+
+        self._run_method(self.hexitec.loadCShareAscii, self.chip_select, 
+                         defines.Region.REGION_EDGE_POS_M, filename)
+
+    def loadCShare_mc(self, filename: str):
+        
+        self._run_method(self.hexitec.loadCShareAsciiMC, self.chip_select, 
+                         defines.Region.REGION_EDGE_POS_M, filename)
+
+    def loadCShare_l3(self, filename: str):
+        self._run_method(self.hexitec.loadCShareAscii, self.chip_select, 
+                         defines.Region.REGION_L_POS_M, filename)
+        
+    def load_hdf_settings(self, filename: str):
+        self.hexitec.loadSettingsHdf5(filename, self.chip_select, HexitecSaveRestore.All, self.lin_scale)
+
+    def save_hdf_settings(self, filename: str):
+        self.hexitec.saveSettingsHdf5(filename, self.chip_select, HexitecSaveRestore.All)

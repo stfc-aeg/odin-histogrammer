@@ -5,7 +5,7 @@ XDMA Hexitec C++ Plugin
 Provides a Python interface to the XDmaHexitec C++ library written by William Helsby
 """
 
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 from .defines import HexitecGeneration
 
 
@@ -45,6 +45,65 @@ class HexitecITfgMode(IntEnum):
 
     HWGated   = 12      
     """Count While HW trigger is high, disable when increment time frame on falling edge."""
+
+class HexitecSaveRestore(IntFlag):
+    """Enum that defines what setting should be saved/loaded to and from a HDF5 settings file"""
+    
+    AbsThresPos = 0x1
+    """Save/Load Absolute Threshold High value"""
+
+    AbsThresNeg = 0x2
+    """Save/Load Absolute Threshold Low Value"""
+
+    AbsThres = 0x3
+    """Save/Load both absolute threshold values"""
+
+    MainThresPos = 0x4
+    """Save/Load Main Threshold Positive value"""
+    MainThresNeg = 0x8
+    """Save/Load Main Threshold Negative value"""
+
+    MainThres = 0xC
+    """Save/Load both Main Threshold values"""
+
+    TrigEnable = 0x10
+    """Save/Load the Main threshold trigger enable"""
+
+    LowThresPos = 0x20
+    """Save/Load Low Threshold Positive value"""
+
+    LowThresNeg = 0x40
+    """Save/Load Low Threshold Negative value"""
+
+    LowThres = 0x60
+    """Save/Load both Low Threshold values"""
+
+    LinCorr = 0x80
+    """Save/Load Linarity Correction"""
+
+    CShareEdgePos = 0x100
+    """Save/Load Charge Sharing Edge Positive value"""
+
+    CShareNegNeb = 0x200
+    """Save/Load Charge Sharing Negative Neighbour value"""
+
+    CShareLPos = 0x400
+    """Save/Load Charge Sharing Edge Positive value"""
+
+    CShareSpares = 0xF800
+    """Reserved flag values for future Chare sharing values"""
+
+    CShare = 0xFF00
+    """Save/Load all charge sharing values"""
+
+    OutputPixelMask = 0x10000
+    """Save/Load Pixel Mask"""
+
+    RequireAll = 0x80000000
+    """Require all values to be saved/loaded"""
+
+    All = 0x7FFFFFFF
+    """Enable full flag"""
 
 class HexitecITfgStat:
     """Struct container for reading the status of the ITFG"""
@@ -550,7 +609,7 @@ class XDmaHexitec:
         :param autoTrigRate: Defines the frequency each pixel is triggered.
         """
 
-    def setCShareMode(self) -> None:
+    def setCShareMode(self, chip, enbEdgePos, enbNegNeb, disSumming, disAdjPosn) -> None:
         """  Enable or disable various charge sharing corrections.
 
         :param chip:       Chip number or -1 to duplicate to all chips.
@@ -964,12 +1023,23 @@ class XDmaHexitec:
         """
 
         """
-    def saveSettingsHdf5(self) -> None:
-        """CURRENTLY UNUSED
+    def saveSettingsHdf5(self, fName: str, chip: int,
+                         saveFlags: HexitecSaveRestore) -> None:
+        """Save various config settings to a HDF5 file
+
+        :param fName: Name of the file to load settings from
+        :param chip: Chip number. -1 to select all chips
+        :param saveFlags: Flag defining which settings to save.
         """
 
-    def loadSettingsHdf5(self) -> None:
-        """CURRENTLY UNUSED
+    def loadSettingsHdf5(self, fName: str, chip: int, 
+                         loadFlags: HexitecSaveRestore, scaleLinearity: float) -> None:
+        """Load various config settings from a HDF5 file
+
+        :param fName: Name of the file to load settings from
+        :param chip: Chip number. -1 to select all chips
+        :param loadFlags: Flag defining which settings to load.
+        :param scaleLinearity: Required for linearity corrections. defaults to 1.0
 
         """
     def writePixelMask(self) -> None:
