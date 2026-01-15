@@ -26,7 +26,7 @@ class HistogramController(BaseController):
 
         self.histogrammer = Histogrammer(options)
 
-        self.config_dir = options.get("config_dr", "test/config/files")
+        self.config_dir = options.get("config_dir", "test/config/files")
         
         if not path.exists(self.config_dir):
             logging.warning("Config File Directory not found: %s", self.config_dir)
@@ -45,10 +45,12 @@ class HistogramController(BaseController):
 
         self.fname_hdf = ""
 
-        self.allowed_file_names = [f for f in listdir(self.config_dir) 
+        self.allowed_file_names = [""]
+        if path.exists(self.config_dir) and path.isdir(self.confgi_dir):
+            self.allowed_file_names.extend([f for f in listdir(self.config_dir) 
                                    if path.isfile(path.join(self.config_dir, f)) and 
-                                   (f.endswith(".txt") or f.endswith(".h5"))]
-        self.allowed_file_names.append("")
+                                   (f.endswith(".txt") or f.endswith(".h5"))])
+        
 
 
         tree = {
@@ -80,7 +82,7 @@ class HistogramController(BaseController):
                 }
             },
             "udp": {
-                "setup": (None, lambda x: self.setupUDP()),
+                "setup": (None, lambda _: self.setupUDP()),
                 "udp_threads": (self.histogrammer.numUDPThreads, partial(self.setValue, "numUDPThreads"),
                                 {"allowed_values": [2**x for x in range(9)]}),
                 "source": {
@@ -127,9 +129,9 @@ class HistogramController(BaseController):
                                     {"allowed_values": self.allowed_file_names}),
                     "l3_filename": (lambda: self.fname_cshare_pos_l3, partial(setattr, self, "fname_cshare_pos_l3"),
                                     {"allowed_values": self.allowed_file_names}),
-                    "pos_load": (None, partial(self.loadLUTAsciiFile, "cshare_pos")),
-                    "mc_load": (None, partial(self.loadLUTAsciiFile, "cshare_mc")),
-                    "l3_load": (None, partial(self.loadLUTAsciiFile, "cshare_l3"))
+                    "pos_load": (None, lambda _: self.loadLUTAsciiFile("cshare_pos")),
+                    "mc_load": (None, lambda _: self.loadLUTAsciiFile("cshare_mc")),
+                    "l3_load": (None, lambda _: self.loadLUTAsciiFile("cshare_l3"))
 
                 },
                 "linearity_correction": {
@@ -139,8 +141,8 @@ class HistogramController(BaseController):
                                       {"allowed_values": self.allowed_file_names}),
                     "lin_filename": (lambda: self.fname_linearity, partial(setattr, self, "fname_linearity"),
                                      {"allowed_values": self.allowed_file_names}),
-                    "gain_load": (None, partial(self.loadLUTAsciiFile, "gain")),
-                    "lin_load": (None, partial(self.loadLUTAsciiFile, "linearity"))
+                    "gain_load": (None, lambda _: self.loadLUTAsciiFile("gain")),
+                    "lin_load": (None, lambda _: self.loadLUTAsciiFile("linearity"))
                 },
                 "hist_format": {
                     "num_bins": (lambda: self.histogrammer.numBins,
@@ -155,7 +157,7 @@ class HistogramController(BaseController):
                     "bad_pixel_mask": {  # load file to define which pixel output to mask out
                         "filename": (lambda: self.fname_badPixelOut, partial(setattr, self, "fname_badPixelOut"),
                                      {"allowed_values": self.allowed_file_names}),
-                        "load": (None, partial(self.loadLUTAsciiFile, "badPixelOutput"))
+                        "load": (None, lambda _: self.loadLUTAsciiFile("badPixelOutput"))
                     }
                 },
                 "thresholds": {  # set the trigger thresholds for the three available triggers
@@ -168,7 +170,7 @@ class HistogramController(BaseController):
                     "bad_pixel": {  # load a file that defines which pixels should have the main trig disabled
                         "filename": (lambda: self.fname_badPixelTrig, partial(setattr, self, "fname_badPixelTrig"),
                                      {"allowed_values": self.allowed_file_names}),
-                        "load": (None, partial(self.loadLUTAsciiFile, "badPixelTrig"))
+                        "load": (None, lambda _: self.loadLUTAsciiFile("badPixelTrig"))
                     }
                 },
                 "baseline": {
@@ -356,7 +358,7 @@ class HistogramController(BaseController):
         self.histogrammer.addLinearityOffset(offset)
         
     def loadLUTAsciiFile(self, setting: Literal["badPixelTrig", "badPixelOutput", "gain", "linearity",
-                                                "cshare_pos", "cshare_mc", "cshare_l3"], _):
+                                                "cshare_pos", "cshare_mc", "cshare_l3"]):
         """Load various settings from ASCII files into their respective lookup tables
 
         :param setting: which lookup table to load into
