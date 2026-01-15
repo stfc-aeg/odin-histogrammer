@@ -37,6 +37,25 @@ class Counters(NamedTuple):
     finishedTimeFrame: int = 0
     """Total number of Finished (output) time frames"""
 
+def _get_bitwise_trailing_zeros(val):
+    """Method to get the number of trailing 0s on a binary value.
+    Used to calculate how much to shift a masked value to return the specific value regardless of its position"""
+    c = 0
+    v = (val ^ (val - 1)) >> 1
+    while v > 0:
+        v >>= 1
+        c += 1
+    return c
+
+def _splitRegisterIntoValues(reg: int, *masks: int) -> tuple[int, ...]:
+    retVal: tuple[int] = ()
+    for mask in masks:
+        shift = _get_bitwise_trailing_zeros(mask)
+        retVal = retVal + ((reg & mask) >> shift,)
+
+    return retVal
+        
+
 
 class Histogrammer:
     """
@@ -126,6 +145,7 @@ class Histogrammer:
         # CHARGE SHARING VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.enbEdgePos = True
         self.enbNegNeb = True
+        self.enbLPos = True
         self.enbSumming = True
         self.enbAdjPosn = True
 
@@ -188,6 +208,7 @@ class Histogrammer:
             self.hexitec = self._run_method(XDmaHexitec, self.useQdma, self.busNum, self.devNum, self.funcNum)
 
             self.status = "connected"
+            logging.debug("Connection to card established")
             self.initialise()
         except (RuntimeError, InternalLibException):
             self.status = "disconnected"
@@ -203,6 +224,7 @@ class Histogrammer:
 
     def initialise(self):
         """Initialise various values and Lookup Tables to the initial defaults"""
+        logging.debug("Initialising default values into lookup tables and registers")
         self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)  # turn off run bit to stop any acquisition
 
         # initalise lookup tables
@@ -220,6 +242,66 @@ class Histogrammer:
         
         self._run_method(self.hexitec.setLinearityOne, self.chip_select, 0.0)
 
+    def read_values(self):
+        # TODO: too many magic number masks in here I reckon
+        logging.debug("Reading Configuration from Hexitec System")
+
+        # hist format
+        histFormatReg = self.hexitec.getChipReg(0, defines.ChipRegisters.FORMAT)
+        numBins, runMode, mappedMode = _splitRegisterIntoValues(histFormatReg, 0x7, 0x7<<3, 0x7<<8)
+        
+        self.mappedMode = defines.MappedMode(mappedMode)
+        self.runMode = defines.RunMode(runMode)
+        
+        lookup = {defines.NumBins.ENG7: 2**7,
+                  defines.NumBins.ENG8: 2**8,
+                  defines.NumBins.ENG9: 2**9,
+                  defines.NumBins.ENG10: 2**10,
+                  defines.NumBins.ENG11: 2**11,
+                  defines.NumBins.ENG12: 2**12,
+                  defines.NumBins.ENG10LSB: 2**13}
+        self.numBins = lookup.get(numBins)
+
+        clusterReg = self.hexitec.getChipReg(0, defines.ChipRegisters.CLUSTER)
+        cluster, trig = _splitRegisterIntoValues(clusterReg, 0x7, 0x3 << 8)
+        self.clusterMode = defines.ClusterMode(cluster)
+        self.autoTrigMode = defines.AutoTrigMode(trig)
+
+        clustTypeReg = self.hexitec.getChipReg(0, defines.ChipRegisters.ENB_CLUSTER)
+        self.clusterType = defines.ClusterEnable(clustTypeReg)
+
+        # thresholds
+        abs_thres_read = self.hexitec.readPixelLUT(0, defines.Region.REGION_ABS_THRES, 0, 1, 0, 1)[0]
+        low_thres_read = self.hexitec.readPixelLUT(0, defines.Region.REGION_LTHRES, 0, 1, 0, 1)[0]
+        main_thres_read = self.hexitec.readPixelLUT(0, defines.Region.REGION_MTHRES, 0, 1, 0, 1)[0]
+        
+        # must consider converting the uint16 value to a negative value for low and main
+        neg_thres_offset = 0x2000  # seems to be the value to turn the unsigned value to signed
+
+        self.thres_abs = [(abs_thres_read >> 16) & 0x7FFF, abs_thres_read & 0x7FFF]
+        self.thres_low = [((low_thres_read >> 16) & 0x7FFF) - neg_thres_offset, low_thres_read & 0x7FFF]
+        self.thres_main = [((main_thres_read >> 16) & 0x7FFF) - neg_thres_offset, main_thres_read & 0x7FFF]
+
+        # baseline
+        baselineReg = self.hexitec.getChipReg(0, defines.ChipRegisters.BASESUB)
+        mask, div, dither = _splitRegisterIntoValues(baselineReg, 0xF >> 4, 0xF, 0x1 >> 12)
+        self.baselineDiv = defines.BaselineDivide(div)
+        self.baselineMask = defines.BaselineMask(mask)
+        self.enableDither = bool(dither)
+
+        # linearity correction
+        # TODO not sure how to get these values
+
+        # charge sharing
+        cShareReg = self.hexitec.getChipReg(0, defines.ChipRegisters.CORR_A)
+        self.enbEdgePos, self.enbNegNeb, self.enbLPos = tuple(bool(x) for x in 
+                                                              _splitRegisterIntoValues(cShareReg, 1, 2, 4))
+        self.enbSumming, self.enbAdjPosn = tuple(not x for x in _splitRegisterIntoValues(cShareReg, 0x100, 0x200))
+
+
+        # UDP stuff?
+
+        
 
     def start_run(self):
         """Make the histogrammer begin outputting Histograms"""
@@ -643,6 +725,7 @@ class Histogrammer:
     # def badPixelTrig(self, row: int, col: int, enable: bool):
 
     def setCShare(self, enableEdgePos: bool| None = None, enableNegNeighbour: bool | None = None,
+                  enableLPos: bool | None = None,
                   enableSumming: bool | None = None, enablePositonAdjustment: bool | None = None):
         """Enable/Disable the various Charge Sharing Correction options.
         
@@ -656,13 +739,15 @@ class Histogrammer:
             enableEdgePos = self.enbEdgePos
         if enableNegNeighbour is None:
             enableNegNeighbour = self.enbNegNeb
+        if enableLPos is None:
+            enableLPos = self.enbLPos
         if enableSumming is None:
             enableSumming = self.enbSumming
         if enablePositonAdjustment is None:
             enablePositonAdjustment = self.enbAdjPosn
 
         self._run_method(self.hexitec.setCShareMode, self.chip_select,
-                         enableEdgePos, enableNegNeighbour,
+                         enableEdgePos, enableNegNeighbour, enableLPos,
                          not enableSumming, not enablePositonAdjustment)
 
     def loadCShare_pos(self, filename: str):
