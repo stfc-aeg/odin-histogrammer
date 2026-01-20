@@ -86,10 +86,24 @@ target_include_directories(hexitec_detfile PRIVATE
   ${DET_SOFTWARE_ROOT}/libs/src/detfile
 )
 
+# IMG_MOD OBJECTS LIBRARY~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+add_library(img_mod OBJECT
+  ${DET_SOFTWARE_ROOT}/display/id/img_mod_lib/img_mod.c
+  ${DET_SOFTWARE_ROOT}/display/id/img_mod_lib/img_mod_linux.c
+)
+target_include_directories(img_mod PRIVATE
+  ${DET_SOFTWARE_ROOT}/libs/include
+)
+target_compile_options(img_mod PRIVATE
+  -D__LINUX__=1
+)
+
+
 # HEXITEC STATIC LIBRARY~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 add_library(hexitec STATIC
   $<TARGET_OBJECTS:hexitec_qdma>
   $<TARGET_OBJECTS:hexitec_detfile>
+  $<TARGET_OBJECTS:img_mod>
   ${HEXITEC_SRC_FILES}
 )
 

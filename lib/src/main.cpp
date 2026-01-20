@@ -4,7 +4,7 @@
 #include <pybind11/stl.h>
 
 #include "xdma_hexitec.h"
-// #include "circular_hdf_writer.h"
+#include "circular_hdf_writer.h"
 
 #include <stdint.h>
 #include <iostream>
@@ -32,7 +32,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         ----------------------
         )pbdoc";
     py::class_<XDmaHexitec> hexitec(m, "XDmaHexitec");
-    // py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
+    py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
     py::class_<HexitecITfgStat> HexitecITfgStat(m, "HexitecITfgStat");
 
 #ifdef VERSION_INFO
@@ -327,14 +327,13 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     });
 
 
-    // circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
-    //     .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)
-    //     .def("setIpAddr", &CircularHdfWriter::setIpAddr)
-    //     .def("start", &CircularHdfWriter::start)
-    //     // .def("stop", &CircularHdfWriter::stop) not declared
-    //     .def("checkProgress", &CircularHdfWriter::checkProgress)
-    //     .def("getMappedOverRuns", &CircularHdfWriter::getMappedOverRuns)
-    //     .def("getSpectraOverRuns", &CircularHdfWriter::getSpectraOverRuns);
+    circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
+        .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)
+        .def("setIpAddr", &CircularHdfWriter::setIpAddr)
+        .def("start", &CircularHdfWriter::start)
+        .def("checkProgress", &CircularHdfWriter::checkProgress)
+        .def("getMappedOverRuns", &CircularHdfWriter::getMappedOverRuns)
+        .def("getSpectraOverRuns", &CircularHdfWriter::getSpectraOverRuns);
 
     HexitecITfgStat.def(py::init<>())
         .def_readwrite("status", &HexitecITfgStat::status)
