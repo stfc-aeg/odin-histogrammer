@@ -34,14 +34,12 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     py::class_<XDmaHexitec> hexitec(m, "XDmaHexitec");
     // py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
     py::class_<HexitecITfgStat> HexitecITfgStat(m, "HexitecITfgStat");
-    // py::class_<XDmaUDPCore> XDmaUDPCore(m, "XDmaUDPCore");
 
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
 #else
     m.attr("__version__") = "dev";
 #endif
-
 
     hexitec.def(py::init<int, int, int, int>(), py::call_guard<py::scoped_ostream_redirect, py::scoped_estream_redirect>())
         .def("getNumChips", &XDmaHexitec::getNumChips)

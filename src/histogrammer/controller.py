@@ -163,12 +163,48 @@ class HistogramController(BaseController):
                     }
                 },
                 "thresholds": {  # set the trigger thresholds for the three available triggers
-                    "main": (lambda: self.histogrammer.thres_main,
-                             partial(self.setThreshold, "main")),
-                    "low": (lambda: self.histogrammer.thres_low,
-                            partial(self.setThreshold, "lower")),
-                    "absolute": (lambda: self.histogrammer.thres_abs,
-                                 partial(self.setThreshold, "absolute")),
+                    "main": {
+                        "neg": (lambda: self.histogrammer.thres_main[0],
+                                partial(self.setThreshold, "main", high=self.histogrammer.thres_main[1]),
+                                {
+                                    "min": self.histogrammer.THRES_MIN,
+                                    "max": 0
+                                }),
+                        "pos": (lambda: self.histogrammer.thres_main[1],
+                                partial(self.setThreshold, "main", low=self.histogrammer.thres_main[0]),
+                                {
+                                    "min": 0,
+                                    "max": self.histogrammer.THRES_MAX
+                                })
+                    },
+                    "low": {
+                        "neg": (lambda: self.histogrammer.thres_low[0],
+                                partial(self.setThreshold, "main", high=self.histogrammer.thres_low[1]),
+                                {
+                                    "min": self.histogrammer.THRES_MIN,
+                                    "max": 0
+                                }),
+                        "pos": (lambda: self.histogrammer.thres_low[1],
+                                partial(self.setThreshold, "main", low=self.histogrammer.thres_low[0]),
+                                {
+                                    "min": 0,
+                                    "max": self.histogrammer.THRES_MAX
+                                })
+                    },
+                    "absolute": {
+                        "low": (lambda: self.histogrammer.thres_abs[0],
+                                partial(self.setThreshold, "main", high=self.histogrammer.thres_abs[1]),
+                                {
+                                    "min": 0,
+                                    "max": self.histogrammer.THRES_MAX
+                                }),
+                        "high": (lambda: self.histogrammer.thres_abs[1],
+                                partial(self.setThreshold, "main", low=self.histogrammer.thres_abs[0]),
+                                {
+                                    "min": 0,
+                                    "max": self.histogrammer.THRES_MAX
+                                })
+                    },
                     "bad_pixel": {  # load a file that defines which pixels should have the main trig disabled
                         "filename": (lambda: self.fname_badPixelTrig, partial(setattr, self, "fname_badPixelTrig"),
                                      {"allowed_values": self.allowed_file_names}),
@@ -264,29 +300,18 @@ class HistogramController(BaseController):
         )
 
     def setThreshold(self, threshold: Literal["absolute", "main" , "lower"],
-                     value: tuple[int, int]):
+                     low: int, high: int):
         """Set the threshold value, after checking if the value is within the bounds.
         Cannot use paramTree METADATA for this as they are tuples, not single values
         """
+        value = (low, high)
+        if(low > high):
+            raise ParameterTreeError("Threshold value invalid as values are in the wrong order: {}".format(value))
         if threshold == "absolute":
-            if value[0] < 0 or value[0] > value[1] or value[1] > self.histogrammer.THRES_MAX:
-                raise ParameterTreeError(
-                    "Absolute Threshold values must be positive and below the max {}: {} is invalid".format(
-                        self.histogrammer.THRES_MAX, value))
             self.histogrammer.thres_abs = value
         elif threshold == "lower":
-            if not (self.histogrammer.THRES_MIN <= value[0] <= 0) or not (0 <= value[1] <= self.histogrammer.THRES_MAX):
-                raise ParameterTreeError(
-                    "Lower Threshold values must be a Negative and Postiive value, and between the min/max values of {} to {}: {} is invalid".format(
-                        self.histogrammer.THRES_MIN, self.histogrammer.THRES_MAX, value
-                    ))
             self.histogrammer.thres_low = value
         else:
-            if not (self.histogrammer.THRES_MIN <= value[0] <= 0) or not (0 <= value[1] <= self.histogrammer.THRES_MAX):
-                raise ParameterTreeError(
-                    "Main Threshold values must be a Negative and Postiive value, and between the min/max values of {} to {}: {} is invalid".format(
-                        self.histogrammer.THRES_MIN, self.histogrammer.THRES_MAX, value
-                    ))
             self.histogrammer.thres_main = value
 
         self.histogrammer.setTriggerThreshold(threshold,
