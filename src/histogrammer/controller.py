@@ -46,11 +46,13 @@ class HistogramController(BaseController):
         self.fname_hdf = ""
 
         self.allowed_file_names = [""]
-        if path.exists(self.config_dir) and path.isdir(self.confgi_dir):
+        if path.exists(self.config_dir) and path.isdir(self.config_dir):
             self.allowed_file_names.extend([f for f in listdir(self.config_dir) 
                                    if path.isfile(path.join(self.config_dir, f)) and 
                                    (f.endswith(".txt") or f.endswith(".h5"))])
         
+                # numBins allowed values dict
+        self.numBins_allowed = ["4096", "2048", "1024", "512", "256", "128", "1024 10 LSB"]
 
 
         tree = {
@@ -145,9 +147,9 @@ class HistogramController(BaseController):
                     "lin_load": (None, lambda _: self.loadLUTAsciiFile("linearity"))
                 },
                 "hist_format": {
-                    "num_bins": (lambda: self.histogrammer.numBins,
+                    "num_bins": (lambda: self.numBins_allowed[self.histogrammer.numBins],
                                  partial(self.setHistFormat, "numBins"),
-                                 {"allowed_values": [2**x for x in range(7, 13)]}),
+                                 {"allowed_values": self.numBins_allowed}),
                     "run_mode": (lambda: self.enumToString(self.histogrammer.runMode),
                                  partial(self.setHistFormat, "runMode"),
                                  {"allowed_values": [self.enumToString(val) for val in RunMode]}),
@@ -307,24 +309,24 @@ class HistogramController(BaseController):
         self.setValue(setting, val)
         self.histogrammer.setClusterMode()
 
-    def setHistFormat(self, setting: Literal["numBins", "mappedMode", "runMode"], value: str | int):
-
+    def setHistFormat(self, setting: Literal["numBins", "mappedMode", "runMode"], value: str):
+        val: NumBins | MappedMode | RunMode = 0
         if setting == "numBins":
-            lookup = {128: NumBins.ENG7,
-                      256: NumBins.ENG8,
-                      512: NumBins.ENG9,
-                      1024: NumBins.ENG10,
-                      2048: NumBins.ENG11,
-                      4096: NumBins.ENG12}
-            val: NumBins = lookup.get(value, NumBins.ENG10LSB)
+            try:
+                index = self.numBins_allowed.index(value)
+            except ValueError:
+                index = 0
+            val = NumBins(index)
         elif setting == "mappedMode":
             val = MappedMode[self.stringToEnum(value)]
-        else:
+        elif setting == "runMode":
             val = RunMode[self.stringToEnum(value)]
+        else:
+            raise HistogramException("Hist Format Setting invalid: {}".format(setting))
         
         self.setValue(setting, val)
 
-        self.histogrammer.setHistFormat(self.histogrammer.numBins, self.histogrammer.runMode, self.histogrammer.mappedMode)
+        self.histogrammer.setHistFormat()
 
 
     def getClusterType(self, flag: ClusterEnable):
@@ -398,7 +400,7 @@ class HistogramController(BaseController):
 
     def SetChargeSharing(self, setting: Literal["enbEdgePos", "enbNegNeb", "enbSumming", "enbAdjPosn"], value: bool):
 
-        setattr(self.histogrammer, setting, value)
+        self.setValue(setting, value)
 
         self.histogrammer.setCShare()
 

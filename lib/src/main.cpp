@@ -34,12 +34,14 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     py::class_<XDmaHexitec> hexitec(m, "XDmaHexitec");
     // py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
     py::class_<HexitecITfgStat> HexitecITfgStat(m, "HexitecITfgStat");
+    // py::class_<XDmaUDPCore> XDmaUDPCore(m, "XDmaUDPCore");
 
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
 #else
     m.attr("__version__") = "dev";
 #endif
+
 
     hexitec.def(py::init<int, int, int, int>(), py::call_guard<py::scoped_ostream_redirect, py::scoped_estream_redirect>())
         .def("getNumChips", &XDmaHexitec::getNumChips)
@@ -270,8 +272,62 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
 
         self.writePixelMask(chip, firstCol, numCols, firstRow, numRows, x);
     });
-    
-    
+
+    hexitec.def("getSrcAddr", [](XDmaHexitec &self, int core)
+    {
+        // RX UDP cores are in RX mode, so Destination and Source are flipped
+        return self.m_udpCore[core].getDstIpAddr();
+    }, py::arg("core") = 0);
+
+    hexitec.def("getDestAddr", [](XDmaHexitec &self, int core)
+    {
+        return self.m_udpTxCore[core].getDstIpAddr();
+    }, py::arg("core") = 0);
+
+    hexitec.def("getAccelRXAddr", [](XDmaHexitec &self, int core)
+    {
+        return self.m_udpCore[core].getSrcIpAddr();
+    }, py::arg("core") = 0);
+
+    hexitec.def("getAccelTXAddr", [](XDmaHexitec &self, int core)
+    {
+        return self.m_udpTxCore[core].getSrcIpAddr();
+    }, py::arg("core") = 0);
+
+    hexitec.def("getSrcPort", [](XDmaHexitec &self)
+    {
+        return self.m_udpCore[0].getDstPort();
+    });
+
+    hexitec.def("getAccelPort", [](XDmaHexitec &self)
+    {
+        return self.m_udpCore[0].getSrcPort();
+    });
+
+    hexitec.def("getDestPort", [](XDmaHexitec &self)
+    {
+        return self.m_udpTxCore[0].getDstPort();
+    });
+
+    hexitec.def("saveSpectraHdf5", [](XDmaHexitec &self, 
+        char *fname, int chip, 
+        int numEng, int firstTF, int numTFSpectra, int numTFMapped,
+        bool enbSpectra, bool enbMapped, bool sumChips, std::vector<std::string> comments
+
+    )
+    {
+        const char **extComment;
+        int i = 0;
+        for(auto comment : comments)
+        {
+            extComment[i] = comment.c_str();
+            i++;
+        }
+        
+        self.saveSpectraHdf5(fname, chip, numEng, firstTF, numTFSpectra, numTFMapped,
+                             enbSpectra, enbMapped, sumChips, extComment);
+    });
+
 
     // circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
     //     .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)

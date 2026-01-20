@@ -614,12 +614,17 @@ class XDmaHexitec:
         :param autoTrigRate: Defines the frequency each pixel is triggered.
         """
 
-    def setCShareMode(self, chip, enbEdgePos, enbNegNeb, disSumming, disAdjPosn) -> None:
+    def setCShareMode(self, chip: int, 
+                      enbEdgePos: bool, 
+                      enbNegNeb: bool, 
+                      enbLPos: bool, disSumming: bool,
+                      disAdjPosn: bool) -> None:
         """  Enable or disable various charge sharing corrections.
 
         :param chip:       Chip number or -1 to duplicate to all chips.
         :param enbEdgePos: Enable charge summing correction where signal shares to give 2 positive signals to a neighbour on a side.
         :param enbNegNeb:  Enable charge summing correction where signal shares to give 1 positive signals  with a negative neighbour.
+        :param enbLPos:    Enable charge summing correction for L positive signals
         :param disSumming: Disable charge summing, particularly for the special case of isolating the Fluorescence peaks
         :param disAdjPosn: Disable the adjustment of position again particularly for the special case of isolating the Fluorescence peaks
 
@@ -952,10 +957,34 @@ class XDmaHexitec:
         """
 
         """
-    def saveSpectraHdf5(self) -> None:
-        """CURRENTLY UNUSED
-
+    def saveSpectraHdf5(self, fname: str, chip: int, numEng: int, firstTF: int, numTFSpectra: int,
+                        NumTFMapped: int, enbSpectra: bool, enbMapped: bool, sumChips: bool,
+                        comments: list[str]) -> None:
         """
+        Save the generated histograms to a HDF5 file
+        
+        :param fname: The name of the output file
+        :type fname: str
+        :param chip: Chip number. -1 to save from all chips
+        :type chip: int
+        :param numEng: Number of energy bins
+        :type numEng: int
+        :param firstTF: Number of the first time frame in the dataset
+        :type firstTF: int
+        :param numTFSpectra: Number of time frames in the spectra dataset
+        :type numTFSpectra: int
+        :param NumTFMapped: number of time frames in the mapped dataset
+        :type NumTFMapped: int
+        :param enbSpectra: Enable saving of spectra data
+        :type enbSpectra: bool
+        :param enbMapped: Enable saving of Mapped data
+        :type enbMapped: bool
+        :param sumChips: Sum the data from all chips together
+        :type sumChips: bool
+        :param comments: Notes/comments to save alongside the data
+        :type comments: list[str]
+        """
+
     def getFlushedFrame(self) -> int:
         """Return the value in the FlushedFrame register
 
@@ -1075,6 +1104,50 @@ class XDmaHexitec:
         :param numRows: Number of rows
 
         :return: A list ordered by [row][col] of the pixel masks requested
-
+        :type chip: int
+        :type firstCol: int
+        :type numCols: int
+        :type firstRow: int
+        :type numRows: int
+        :rtype: list[int]
         """
 
+    def getSrcAddr(self, core: int = 0) -> int:
+        """
+        Get the Source IP Address
+        
+        :param core: Which UDP Core to read from. Defaults to 0
+        :type core: int
+        :return: The Source IP Addr as a 32 bit integer
+        :rtype: int
+        """
+
+    def getDestAddr(self, core: int = 0) -> int:
+        """
+        Get the Destination IP Address
+        
+        :param core: Which UDP Core to read from. Defaults to 0
+        :type core: int
+        :return: The Desination IP Addr as a 32 bit integer
+        :rtype: int
+        """
+
+    def getAccelRXAddr(self, core: int = 0) -> int:
+        """
+        Get the Histogrammer's recieve IP Address
+        
+        :param core: Which UDP Core to read from. Defaults to 0
+        :type core: int
+        :return: The receive IP Addr as a 32 bit integer
+        :rtype: int
+        """
+    
+    def getAccelTXAddr(self, core: int = 0) -> int:
+        """
+        Get the Histogrammer's Send IP Address
+        
+        :param core: Which UDP Core to read from. Defaults to 0
+        :type core: int
+        :return: The Sending IP Addr as a 32 bit integer
+        :rtype: int
+        """

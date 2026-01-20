@@ -5,8 +5,12 @@ from datetime import datetime
 from typing import Literal, TypeVar, NamedTuple
 from tornado.ioloop import PeriodicCallback, IOLoop
 
-from xdma_hexitec import XDmaHexitec, defines
+from xdma_hexitec import XDmaHexitec
 from xdma_hexitec import HexitecUdpRxConnection, HexitecITfgMode, HexitecSaveRestore
+from xdma_hexitec.defines import MappedMode, NumBins, RunMode, ClusterMode, ClusterEnable, AutoTrigMode
+from xdma_hexitec.defines import BaselineMask, BaselineDivide, BaselineChipVals
+from xdma_hexitec.defines import Region, GlobalRegisters, ChipRegisters
+from xdma_hexitec.defines import TimeFrameStatus, TimeFrameMasks, HexitecGeneration
 
 from .base_controller import BaseError
 
@@ -108,12 +112,13 @@ class Histogrammer:
         self.numUDPThreads = 8
 
         # HISTOGRAM FORMAT CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~
-        self.mappedMode = defines.MappedMode.OFF
-        self.clusterMode = defines.ClusterMode.POSITIVE
-        self.clusterType = defines.ClusterEnable.ALL
-        self.autoTrigMode = defines.AutoTrigMode.AUTOTRIG_1IN16
-        self.numBins = 1024  # numBins.ENG10
-        self.runMode = defines.RunMode.NORMAL
+        self.mappedMode = MappedMode.OFF
+        self.clusterMode = ClusterMode.POSITIVE
+        self.clusterType = ClusterEnable.ALL
+        self.autoTrigMode = AutoTrigMode.AUTOTRIG_1IN16
+        self.numBins = NumBins.ENG10
+
+        self.runMode = RunMode.NORMAL
 
         # THRESHOLD VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.thres_main = [-35, 35]
@@ -121,8 +126,8 @@ class Histogrammer:
         self.thres_abs = [1, 1000]
 
         # BASELINE VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        self.baselineMask = defines.BaselineMask.FIXED
-        self.baselineDiv = defines.BaselineDivide.BSUB_DIVIDE1024
+        self.baselineMask = BaselineMask.FIXED
+        self.baselineDiv = BaselineDivide.BSUB_DIVIDE1024
         self.enableDither = False
 
         self.chip_select = -1  # -1 applies changes to all chips
@@ -164,14 +169,14 @@ class Histogrammer:
     def read_itfg_status_callback(self):
         stat = self.getItfgStatus()
         try:
-            self.itfg_status["status"] = defines.TimeFrameStatus(stat[0]).name
+            self.itfg_status["status"] = TimeFrameStatus(stat[0]).name
         except ValueError:
             self.itfg_status["status"] = "invalid"
         self.itfg_status["input_frame"] = stat[1]
         self.itfg_status["output_frame"] = stat[2]
         self.itfg_status["cycles"] = stat[3]
 
-        if stat[0] == defines.TimeFrameStatus.FINISHED:
+        if stat[0] == TimeFrameStatus.FINISHED:
             self.stop_run()
 
 
@@ -225,55 +230,50 @@ class Histogrammer:
     def initialise(self):
         """Initialise various values and Lookup Tables to the initial defaults"""
         logging.debug("Initialising default values into lookup tables and registers")
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)  # turn off run bit to stop any acquisition
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 0)  # turn off run bit to stop any acquisition
 
         # initalise lookup tables
-        self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_EDGE_POS_RECIP, self.stream_select)
-        self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_NEG_NEB_RECIP, self.stream_select)
-        self._run_method(self.hexitec.initRecipLUT, self.chip_select, defines.Region.REGION_L_POS_RECIP, self.stream_select)
+        self._run_method(self.hexitec.initRecipLUT, self.chip_select, Region.REGION_EDGE_POS_RECIP, self.stream_select)
+        self._run_method(self.hexitec.initRecipLUT, self.chip_select, Region.REGION_NEG_NEB_RECIP, self.stream_select)
+        self._run_method(self.hexitec.initRecipLUT, self.chip_select, Region.REGION_L_POS_RECIP, self.stream_select)
         self._run_method(self.hexitec.initCShareLUTs, self.chip_select, self.stream_select)
         
         # init baseline Lookup Table to 0
         self._run_method(self.hexitec.setPixelLUT,
-                         self.chip_select, defines.Region.REGION_BASELINE,
+                         self.chip_select, Region.REGION_BASELINE,
                          0, self.NUM_COLS,
                          0, self.NUM_ROWS, 0)
         self._run_method(self.hexitec.initPixelMask, self.chip_select)
         
         self._run_method(self.hexitec.setLinearityOne, self.chip_select, 0.0)
 
+        self.read_values()
+
     def read_values(self):
         # TODO: too many magic number masks in here I reckon
         logging.debug("Reading Configuration from Hexitec System")
 
         # hist format
-        histFormatReg = self.hexitec.getChipReg(0, defines.ChipRegisters.FORMAT)
+        histFormatReg = self.hexitec.getChipReg(0, ChipRegisters.FORMAT)
         numBins, runMode, mappedMode = _splitRegisterIntoValues(histFormatReg, 0x7, 0x7<<3, 0x7<<8)
         
-        self.mappedMode = defines.MappedMode(mappedMode)
-        self.runMode = defines.RunMode(runMode)
-        
-        lookup = {defines.NumBins.ENG7: 2**7,
-                  defines.NumBins.ENG8: 2**8,
-                  defines.NumBins.ENG9: 2**9,
-                  defines.NumBins.ENG10: 2**10,
-                  defines.NumBins.ENG11: 2**11,
-                  defines.NumBins.ENG12: 2**12,
-                  defines.NumBins.ENG10LSB: 2**13}
-        self.numBins = lookup.get(numBins)
+        self.mappedMode = MappedMode(mappedMode)
+        self.runMode = RunMode(runMode)
 
-        clusterReg = self.hexitec.getChipReg(0, defines.ChipRegisters.CLUSTER)
+        self.numBins = NumBins(numBins)
+
+        clusterReg = self.hexitec.getChipReg(0, ChipRegisters.CLUSTER)
         cluster, trig = _splitRegisterIntoValues(clusterReg, 0x7, 0x3 << 8)
-        self.clusterMode = defines.ClusterMode(cluster)
-        self.autoTrigMode = defines.AutoTrigMode(trig)
+        self.clusterMode = ClusterMode(cluster)
+        self.autoTrigMode = AutoTrigMode(trig)
 
-        clustTypeReg = self.hexitec.getChipReg(0, defines.ChipRegisters.ENB_CLUSTER)
-        self.clusterType = defines.ClusterEnable(clustTypeReg)
+        clustTypeReg = self.hexitec.getChipReg(0, ChipRegisters.ENB_CLUSTER)
+        self.clusterType = ClusterEnable(clustTypeReg)
 
         # thresholds
-        abs_thres_read = self.hexitec.readPixelLUT(0, defines.Region.REGION_ABS_THRES, 0, 1, 0, 1)[0]
-        low_thres_read = self.hexitec.readPixelLUT(0, defines.Region.REGION_LTHRES, 0, 1, 0, 1)[0]
-        main_thres_read = self.hexitec.readPixelLUT(0, defines.Region.REGION_MTHRES, 0, 1, 0, 1)[0]
+        abs_thres_read = self.hexitec.readPixelLUT(0, Region.REGION_ABS_THRES, 0, 1, 0, 1)[0]
+        low_thres_read = self.hexitec.readPixelLUT(0, Region.REGION_LTHRES, 0, 1, 0, 1)[0]
+        main_thres_read = self.hexitec.readPixelLUT(0, Region.REGION_MTHRES, 0, 1, 0, 1)[0]
         
         # must consider converting the uint16 value to a negative value for low and main
         neg_thres_offset = 0x2000  # seems to be the value to turn the unsigned value to signed
@@ -283,17 +283,17 @@ class Histogrammer:
         self.thres_main = [((main_thres_read >> 16) & 0x7FFF) - neg_thres_offset, main_thres_read & 0x7FFF]
 
         # baseline
-        baselineReg = self.hexitec.getChipReg(0, defines.ChipRegisters.BASESUB)
+        baselineReg = self.hexitec.getChipReg(0, ChipRegisters.BASESUB)
         mask, div, dither = _splitRegisterIntoValues(baselineReg, 0xF >> 4, 0xF, 0x1 >> 12)
-        self.baselineDiv = defines.BaselineDivide(div)
-        self.baselineMask = defines.BaselineMask(mask)
+        self.baselineDiv = BaselineDivide(div)
+        self.baselineMask = BaselineMask(mask)
         self.enableDither = bool(dither)
 
         # linearity correction
         # TODO not sure how to get these values
 
         # charge sharing
-        cShareReg = self.hexitec.getChipReg(0, defines.ChipRegisters.CORR_A)
+        cShareReg = self.hexitec.getChipReg(0, ChipRegisters.CORR_A)
         self.enbEdgePos, self.enbNegNeb, self.enbLPos = tuple(bool(x) for x in 
                                                               _splitRegisterIntoValues(cShareReg, 1, 2, 4))
         self.enbSumming, self.enbAdjPosn = tuple(not x for x in _splitRegisterIntoValues(cShareReg, 0x100, 0x200))
@@ -335,7 +335,7 @@ class Histogrammer:
         self.hexitec.enableHist()
 
         # set the run reg to 1 to start producing histograms
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 1)
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 1)
         self.status = "running"
 
         if self.acqMode == "timed":
@@ -349,7 +349,7 @@ class Histogrammer:
     def stop_run(self):
         logging.debug("Stopping Run")
         if self.hexitec is None or self.status != "running":
-            logging.warning("Histogrammer is not running, doing nothering in stop_run")
+            logging.info("Histogrammer is not running, doing nothing in stop_run")
             return
         
         # await data mover stop?
@@ -361,11 +361,11 @@ class Histogrammer:
         # making sure to read the current frame counts before turning off the run bit
         # as turning off the bit flushes the histograms and we lose this information
         self.frame_counters = self.getFrameCounts()
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 0)
         self.status = "completed"
 
-    def setBaseline(self, mask: defines.BaselineMask | None = None,
-                    divide: defines.BaselineDivide | None = None,
+    def setBaseline(self, mask: BaselineMask | None = None,
+                    divide: BaselineDivide | None = None,
                     enableDither: bool | None = None):
         """Set the Baseline Mode
         
@@ -383,7 +383,7 @@ class Histogrammer:
 
 
         # if the mask is set to fixed, we dont use the absolute trigger
-        useAbsTrig = not (mask == defines.BaselineMask.FIXED)
+        useAbsTrig = not (mask == BaselineMask.FIXED)
         
         self._run_method(self.hexitec.setBaselineMode, 
                          self.chip_select, mask, divide, enableDither, useAbsTrig)
@@ -394,17 +394,17 @@ class Histogrammer:
         waitLoadBaseline() method
         """
         
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 0)
         for chip in range(self.hexitec.getNumChips()):
-            baselineReg = self.hexitec.getChipReg(chip, defines.ChipRegisters.BASESUB)
-            self.hexitec.setChipReg(chip, defines.ChipRegisters.BASESUB, baselineReg & ~ defines.BaselineChipVals.LOAD)
-            self.hexitec.setChipReg(chip, defines.ChipRegisters.BASESUB, baselineReg | defines.BaselineChipVals.LOAD)
+            baselineReg = self.hexitec.getChipReg(chip, ChipRegisters.BASESUB)
+            self.hexitec.setChipReg(chip, ChipRegisters.BASESUB, baselineReg & ~ BaselineChipVals.LOAD)
+            self.hexitec.setChipReg(chip, ChipRegisters.BASESUB, baselineReg | BaselineChipVals.LOAD)
         
-        dataPath = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_DATA_PATH)
+        dataPath = self.hexitec.getGlobReg(GlobalRegisters.GLB_DATA_PATH)
         dataPath = dataPath | (1<<14)  #TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_SHORT_BURST_MODE
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, dataPath)
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_FRAME_BURST_LENGTH, 2)
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 1)
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, dataPath)
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_FRAME_BURST_LENGTH, 2)
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 1)
 
         IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, 0)
         # wait for baseline to finish loading. ioloop of some sort
@@ -412,7 +412,7 @@ class Histogrammer:
     def waitLoadBaseline(self, dataPath, loopCount): # TODO: add a timeout to avoid it getting stuck here
         """Loop waiting for the baseline to finish loading, before allowing the run to start proper"""
         mask = 0xFFFFFFFFFFFFFFF
-        status = self.hexitec.getGlobReg64(defines.GlobalRegisters.GLB_LOADING_BL)
+        status = self.hexitec.getGlobReg64(GlobalRegisters.GLB_LOADING_BL)
         
         timeout = 20000
         # if (status & mask) and loopCount < 1000:
@@ -422,16 +422,16 @@ class Histogrammer:
             # loading complete
             if loopCount > timeout:
                 logging.warning("Timed out waiting for Baseline to load. This may mean data is not being sent to the Histogrammer")
-            self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_RUN_REG, 0)
+            self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 0)
             dataPath = dataPath & ~ (1 << 14) #TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_SHORT_BURST_MODE
-            self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, dataPath)
+            self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, dataPath)
 
             self.complete_start_run()
         else:
             IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, loopCount + 1)
 
 
-    def setClusterMode(self, clusterMode: defines.ClusterMode | None = None, autoTrigMode: defines.AutoTrigMode | None = None):
+    def setClusterMode(self, clusterMode: ClusterMode | None = None, autoTrigMode: AutoTrigMode | None = None):
         """Sets the cluster Mode and the auto triggering.
         
         :param clusterMode: The mode which describes how and which clusters are chosen.
@@ -447,14 +447,14 @@ class Histogrammer:
 
         self._run_method(self.hexitec.setClusterMode, self.chip_select, clusterMode, autoTrigMode)
 
-    def setClusterTypes(self, clusterType: defines.ClusterEnable = None):
+    def setClusterTypes(self, clusterType: ClusterEnable = None):
         """Sets the cluster pattern type(s).
         
         :param clusterType: A Flag of all cluster patterns to enable, bitwise ORd together. If this value is 0, it is overwritten to the default that enables all patterns
         """
 
-        if clusterType is None or clusterType not in defines.ClusterEnable:
-            clusterType = defines.ClusterEnable.ALL
+        if clusterType is None or clusterType not in ClusterEnable:
+            clusterType = ClusterEnable.ALL
 
         self._run_method(self.hexitec.setClusterTypes, self.chip_select, clusterType)
 
@@ -511,7 +511,10 @@ class Histogrammer:
                          self.chip_select,
                          offset)
 
-    def setHistFormat(self, numBins: defines.NumBins, runMode: defines.RunMode, mappedMode: defines.MappedMode):
+    def setHistFormat(self,
+                      numBins: NumBins | None = None,
+                      runMode: RunMode | None = None,
+                      mappedMode: MappedMode | None = None):
         """Set the Format of the Histograms. Be aware, not all combinations of numBins, runMode, and mappedMode are permitted.
         
         :param numBins: Enum value that defines the number of energy bins
@@ -520,6 +523,9 @@ class Histogrammer:
 
         :raises InternalLibException: If the combination of numBins and runMode is invalid
         """
+        numBins = numBins if numBins != None else self.numBins
+        runMode = runMode if runMode != None else self.runMode
+        mappedMode = mappedMode if mappedMode != None else self.mappedMode
 
         histFormat = (runMode << 3) | numBins
         self._run_method(self.hexitec.setHistFormat,
@@ -536,7 +542,6 @@ class Histogrammer:
                  If the supplied address is invalid for any reason, returns a 0 so the histogrammer
                  uses the default IP addresses
         """
-        # 192 << 24 | 168 << 16 | 2 << 8 |
 
         try:
             parts = [int(x) for x in ip.split(".")]
@@ -561,7 +566,7 @@ class Histogrammer:
         srcIP_int = self.getIntfromIP(srcIP)
         destIP_int = self.getIntfromIP(destIP)
 
-        self.hexitec.setGlobReg(defines.GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
         
         self.hexitec.setRxEthernetLoopback(0)  # disable ethernet loopback
         self._run_method(self.hexitec.udpRxSetup,
@@ -570,7 +575,7 @@ class Histogrammer:
                          connectType)
         
         for i in range(self.hexitec.getNumRxUdp()):
-            if self.hexitec.getGeneration() == defines.HexitecGeneration.HexitecGenHexitec:
+            if self.hexitec.getGeneration() == HexitecGeneration.HexitecGenHexitec:
                 self.hexitec.setRxEthernetReg(i, 0x0020, 1)  # TODO: TEMP MAGIC NUMBER, MATCHES ETHERNET_PM_TICK_REG
 
         # disable any datamovers that might be running
@@ -580,7 +585,7 @@ class Histogrammer:
 
     def setupUdpSend(self, srcIP: str, destIP: str,
                      srcPort: int, destPort: int,
-                     numThreads: int, mappedMode: defines.MappedMode):
+                     numThreads: int, mappedMode: MappedMode):
         """Setup the UDP cores to send Histograms to a server (usually an Odin Data instance)
         
         :param srcIP: THe IP address of the Histogrammer
@@ -602,7 +607,7 @@ class Histogrammer:
         timeframe_start = -1  #TODO: this resets the start number of the timeframes every time. May not be the intended method
         farmMask = numThreads - 1
 
-        if mappedMode == defines.MappedMode.INTERLEAVE:
+        if mappedMode == MappedMode.INTERLEAVE:
             numThreads = numThreads * 2  # mapped interleave mode requires threads for spectra and mapped
         logging.debug("Setting up UDP Tx With The Following settings:")
         logging.debug("Source IP: {}, Source Port: {}, Dest IP: {}, DestPort: {}".format(srcIP_int, srcPort, destIP_int, destPort))
@@ -621,7 +626,7 @@ class Histogrammer:
         #TODO: check for no_clear/UDP_dist to modify autoMode/farmIndex
 
         # if mapped mode is set to allow spectra (either mappedMode OFF or mappedMode INTERLEAVE)
-        if mappedMode != defines.MappedMode.ONLY:
+        if mappedMode != MappedMode.ONLY:
             # setup data mover farm mode for Spectra
             logging.debug("Setting up UDP DataMover for Spectra Output")
             self._run_method(self.hexitec.startDataMoverStreamUDP, 
@@ -630,7 +635,7 @@ class Histogrammer:
             farmBase = farmBase + farmMask + 1
         
         # if mapped mode is set to allow Mapped output (ONLY or INTERLEAVE)
-        if mappedMode != defines.MappedMode.OFF:
+        if mappedMode != MappedMode.OFF:
             logging.debug("Setting up UDP Datamover for Mapped Output")
             self._run_method(self.hexitec.startDataMoverStreamUDP,
                              timeframe_start, XDmaHexitec.MappedView.Mapped16, False,
@@ -658,19 +663,19 @@ class Histogrammer:
         # method does is the for loop below
 
         for i in range(self.hexitec.getNumChips()):
-            frameCount.append(self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_FRAME_COUNT0 + (2*i)))
-            rawCount.append(self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RAW_HIT_COUNT0 + (2*i)))
+            frameCount.append(self.hexitec.getGlobReg(GlobalRegisters.GLB_FRAME_COUNT0 + (2*i)))
+            rawCount.append(self.hexitec.getGlobReg(GlobalRegisters.GLB_RAW_HIT_COUNT0 + (2*i)))
 
 
         frameToken = self.hexitec.getFlushedFrame()
         inputTimeFrame = self.hexitec.getInpTimeFrame(0)
 
         # mask to get the count from the register value
-        inputTimeFrame = inputTimeFrame & defines.TimeFrameMasks.INPUT_COUNT
+        inputTimeFrame = inputTimeFrame & TimeFrameMasks.INPUT_COUNT
 
         # check valid bit of frameToken
-        if frameToken & defines.TimeFrameMasks.FLUSHED_VALID:
-            finishedTimeFrame = frameToken & defines.TimeFrameMasks.FLUSHED_COUNT
+        if frameToken & TimeFrameMasks.FLUSHED_VALID:
+            finishedTimeFrame = frameToken & TimeFrameMasks.FLUSHED_COUNT
 
         return Counters(frameCount[0],
                         sum(rawCount),
@@ -683,10 +688,10 @@ class Histogrammer:
         
         # self.hexitec.iTfgReadStatus(stat) # passing the python class as a struct pointer didnt seem to work
         # so we read the registers manually
-        status = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_STATUS)
-        inpFrame = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_INP_FRAME)
-        timeFrame = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_TIME_FRAME)
-        cycles = self.hexitec.getGlobReg(defines.GlobalRegisters.GLB_RD_ITFG_CYCLES)
+        status = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_STATUS)
+        inpFrame = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_INP_FRAME)
+        timeFrame = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_TIME_FRAME)
+        cycles = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_CYCLES)
         # logging.debug("{} {} {} {}".format(status, inpFrame, timeFrame, cycles))
         return (status, inpFrame, timeFrame, cycles)
     
@@ -753,16 +758,16 @@ class Histogrammer:
     def loadCShare_pos(self, filename: str):
 
         self._run_method(self.hexitec.loadCShareAscii, self.chip_select, 
-                         defines.Region.REGION_EDGE_POS_M, filename)
+                         Region.REGION_EDGE_POS_M, filename)
 
     def loadCShare_mc(self, filename: str):
         
         self._run_method(self.hexitec.loadCShareAsciiMC, self.chip_select, 
-                         defines.Region.REGION_EDGE_POS_M, filename)
+                         Region.REGION_EDGE_POS_M, filename)
 
     def loadCShare_l3(self, filename: str):
         self._run_method(self.hexitec.loadCShareAscii, self.chip_select, 
-                         defines.Region.REGION_L_POS_M, filename)
+                         Region.REGION_L_POS_M, filename)
         
     def load_hdf_settings(self, filename: str):
         self.hexitec.loadSettingsHdf5(filename, self.chip_select, HexitecSaveRestore.All, self.lin_scale)
