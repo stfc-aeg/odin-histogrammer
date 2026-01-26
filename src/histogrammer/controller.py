@@ -3,13 +3,15 @@ import logging
 from .base_controller import BaseError, BaseController
 
 from functools import partial
-from typing import get_args, Literal, Type
+from typing import get_args, Literal
 from enum import Enum
 from os import path, listdir
+from tornado.ioloop import IOLoop
 
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
-from histogrammer.histogrammer import Histogrammer, InternalLibException
-from histogrammer.histogrammer import ConnectionStatus, AcquisitionMode
+from histogrammer.histogrammer import Histogrammer
+from histogrammer.AcquisitionHandler import runStatus
+from histogrammer.util import HexitecUnconnectedException, InternalLibException
 from xdma_hexitec.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode, RunMode, NumBins
 from xdma_hexitec.defines import BaselineDivide, BaselineMask
 
@@ -54,53 +56,20 @@ class HistogramController(BaseController):
                 # numBins allowed values dict
         self.numBins_allowed = ["4096", "2048", "1024", "512", "256", "128", "1024 10 LSB"]
 
+        tree_device = {
+            "status": (lambda: self.histogrammer.acqHandler.runStatus, None,
+                        {"allowed_values": list(get_args(runStatus))}),
+            "device_num": (lambda: self.histogrammer.devNum, partial(self.setValue, "devNum")),
+            "connect": (lambda: self.histogrammer.hexitec is not None, self.setConnect)
+        }
+
+        tree_acquisition = self.histogrammer.acqHandler.param_tree
+        tree_acquisition["run"] = (lambda: self.histogrammer.acqHandler.runStatus == "running", self.setRun)
 
         tree = {
-            "device": {
-                "status": (lambda: self.histogrammer.status, None,
-                           {"allowed_values": list(get_args(ConnectionStatus))}),
-                "device_num": (lambda: self.histogrammer.devNum, partial(self.setValue, "devNum")),
-                "connect": (lambda: self.histogrammer.status != "disconnected", self.setConnect)
-            },
-            "acquisition": {
-                "run": (lambda: self.histogrammer.status == "running", self.setRun),
-                "mode": (lambda: self.histogrammer.acqMode, partial(self.setValue, "acqMode"),
-                         {"allowed_values": list(get_args(AcquisitionMode))}),
-                "duration": (lambda: self.histogrammer.runTimer, partial(self.setValue, "runTimer")),
-                "input_frames": (lambda: self.histogrammer.input_frames, partial(self.setValue, "input_frames")),
-                "output_frames": (lambda: self.histogrammer.output_frames, partial(self.setValue, "output_frames")),
-                "count": {
-                    "detector_frames": (lambda: self.histogrammer.frame_counters.frameCount, None),
-                    "raw_hits": (lambda: self.histogrammer.frame_counters.rawHitCount, None),
-                    "udp_frames": (lambda: self.histogrammer.frame_counters.inputTimeFrame, None),
-                    "complete_time_frames": (lambda: self.histogrammer.frame_counters.finishedTimeFrame, None)
-                },
-                "itfg": {
-                    "status": (lambda: self.histogrammer.itfg_status["status"], None),
-                    "remaining_in": (lambda: self.histogrammer.itfg_status["input_frame"], None,
-                                     {"description": "The number of input frames remaining for the current Histogram"}),
-                    "num_out": (lambda: self.histogrammer.itfg_status["output_frame"], None,
-                                {"description": "The Number of Histograms created"})
-                }
-            },
-            "udp": {
-                "setup": (None, lambda _: self.setupUDP()),
-                "udp_threads": (self.histogrammer.numUDPThreads, partial(self.setValue, "numUDPThreads"),
-                                {"allowed_values": [2**x for x in range(9)]}),
-                "source": {
-                    "ip": (lambda: self.histogrammer.source_ip, partial(self.setValue, "source_ip")),
-                    "port": (lambda: self.histogrammer.source_port, partial(self.setValue, "source_port"))
-                },
-                "accelerator": {
-                    "rx_ip": (lambda: self.histogrammer.accel_rx_ip, partial(self.setValue, "accel_rx_ip")),
-                    "tx_ip": (lambda: self.histogrammer.accel_tx_ip, partial(self.setValue, "accel_tx_ip")),
-                    "port": (lambda: self.histogrammer.accel_port, partial(self.setValue, "accel_port"))
-                },
-                "destination": {
-                    "ip": (lambda: self.histogrammer.dest_ip, partial(self.setValue, "dest_ip")),
-                    "port": (lambda: self.histogrammer.dest_port, partial(self.setValue, "dest_port"))
-                }
-            },
+            "device": tree_device,
+            "acquisition": tree_acquisition,
+            "udp": self.histogrammer.udpHandler.param_tree,
             "config": {
                 "hdf_filename": (lambda: self.fname_hdf, partial(setattr, self, "fname_hdf")),
                 "save_hdf": (None, self.save_hdf_settings),
@@ -230,7 +199,7 @@ class HistogramController(BaseController):
     def get(self, path: str, with_metadata: bool = False):
         try:
             return self.paramTree.get(path, with_metadata)
-        except (ParameterTreeError, InternalLibException) as error:
+        except (ParameterTreeError, InternalLibException, HexitecUnconnectedException) as error:
             logging.error(error)
             raise HistogramException(error)
         
@@ -242,7 +211,7 @@ class HistogramController(BaseController):
             raise HistogramException(error)
         except AttributeError as error:
             logging.error(error)
-            if self.histogrammer.hexitec is None or self.histogrammer.status == "disconnected":
+            if self.histogrammer.hexitec is None:
                 raise HistogramException("Histogrammer not connected")
             else:
                 raise HistogramException(error)
@@ -252,7 +221,6 @@ class HistogramController(BaseController):
 
     def cleanup(self) -> None:
         logging.debug("Shutting down Histogrammer")
-        self.histogrammer.stop_run()
         self.histogrammer.disconnect()
 
     def enumToString(self, enumVal: Enum) -> str:
@@ -269,7 +237,7 @@ class HistogramController(BaseController):
         :param param: Name of the Attribute to set.
         :param value: Value to set the attribute to
         """
-        if self.histogrammer.status == "running":
+        if self.histogrammer.acqHandler.runStatus == "running":
             raise ParameterTreeError("Cannot change settings while an aquisition is running")
         if not hasattr(self.histogrammer, param):
             raise ParameterTreeError("Histogrammer does not have an attribute called {}".format(param))
@@ -283,21 +251,9 @@ class HistogramController(BaseController):
 
     def setRun(self, run: bool):
         if run:
-            self.histogrammer.start_run()
+            IOLoop.current().add_callback(self.histogrammer.start_run)
         else:
-            self.histogrammer.stop_run()
-
-    def setupUDP(self):
-        self.histogrammer.setupUdpReceive(
-            self.histogrammer.source_ip, self.histogrammer.accel_rx_ip,
-            self.histogrammer.source_port, self.histogrammer.accel_port,
-            self.histogrammer.connectType
-        )
-        self.histogrammer.setupUdpSend(
-            self.histogrammer.accel_tx_ip, self.histogrammer.dest_ip,
-            self.histogrammer.accel_port, self.histogrammer.dest_port,
-            self.histogrammer.numUDPThreads, self.histogrammer.mappedMode 
-        )
+            IOLoop.current().add_callback(self.histogrammer.stop_run)
 
     def setThreshold(self, threshold: Literal["absolute", "main" , "lower"],
                      low: int, high: int):

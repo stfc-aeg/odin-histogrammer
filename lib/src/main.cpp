@@ -329,7 +329,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
 
     circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
         .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)
-        .def("setIpAddr", &CircularHdfWriter::setIpAddr)
+        // .def("setIpAddr", &CircularHdfWriter::setIpAddr) UNUSED
         .def("start", &CircularHdfWriter::start)
         .def("checkProgress", &CircularHdfWriter::checkProgress)
         .def("getMappedOverRuns", &CircularHdfWriter::getMappedOverRuns)
@@ -418,19 +418,21 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .export_values()
         .finalize();
 
-    // py::native_enum<CircWriterReadoutMode>(m, "CircWriterReadoutMode")
-    //     .value("Unknown", CircWriterReadoutMode::Unknown)
-    //     .value("PolledMemMapped", CircWriterReadoutMode::PolledMemMapped)
-    //     .value("IrqMemMapped", CircWriterReadoutMode::IrqMemMapped)
-    //     .value("AutoUDPThreadPerFrame", CircWriterReadoutMode::AutoUDPThreadPerFrame)
-    //     .value("AutoUDPThreadPerPacket", CircWriterReadoutMode::AutoUDPThreadPerPacket)
-    //     .value("AutoUDPNoTrailer", CircWriterReadoutMode::AutoUDPNoTrailer)
-    //     .export_values();
+    py::native_enum<CircWriterReadoutMode>(m, "CircWriterReadoutMode", "enum.IntEnum")
+        .value("Unknown", CircWriterReadoutMode::Unknown)
+        .value("PolledMemMapped", CircWriterReadoutMode::PolledMemMapped)
+        .value("IrqMemMapped", CircWriterReadoutMode::IrqMemMapped)
+        .value("AutoUDPThreadPerFrame", CircWriterReadoutMode::AutoUDPThreadPerFrame)
+        .value("AutoUDPThreadPerPacket", CircWriterReadoutMode::AutoUDPThreadPerPacket)
+        .value("AutoUDPNoTrailer", CircWriterReadoutMode::AutoUDPNoTrailer)
+        .export_values()
+        .finalize();
 
-    // py::native_enum<CircWriterUdpTxOnlyMode>(m, "CircWriterUdpTxOnlyMode")
-    //     .value("TxNormal", CircWriterUdpTxOnlyMode::TxNormal)
-    //     .value("TxOnlyLoop", CircWriterUdpTxOnlyMode::TxOnlyLoop)
-    //     .value("TxOnly1Pass", CircWriterUdpTxOnlyMode::TxOnly1Pass)
-    //     .export_values();
+    py::native_enum<CircWriterUdpTxOnlyMode>(m, "CircWriterUdpTxOnlyMode", "enum.IntEnum")
+        .value("TxNormal", CircWriterUdpTxOnlyMode::TxNormal)
+        .value("TxOnlyLoop", CircWriterUdpTxOnlyMode::TxOnlyLoop)
+        .value("TxOnly1Pass", CircWriterUdpTxOnlyMode::TxOnly1Pass)
+        .export_values()
+        .finalize();
 
 }

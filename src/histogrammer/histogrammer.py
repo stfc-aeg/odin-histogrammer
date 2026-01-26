@@ -5,12 +5,17 @@ from datetime import datetime
 from typing import Literal, TypeVar, NamedTuple
 from tornado.ioloop import PeriodicCallback, IOLoop
 
-from xdma_hexitec import XDmaHexitec
+from xdma_hexitec import XDmaHexitec, CircularHdfWriter
+from xdma_hexitec import CircWriterReadoutMode, CircWriterUdpTxOnlyMode
 from xdma_hexitec import HexitecUdpRxConnection, HexitecITfgMode, HexitecSaveRestore
 from xdma_hexitec.defines import MappedMode, NumBins, RunMode, ClusterMode, ClusterEnable, AutoTrigMode
 from xdma_hexitec.defines import BaselineMask, BaselineDivide, BaselineChipVals
 from xdma_hexitec.defines import Region, GlobalRegisters, ChipRegisters
 from xdma_hexitec.defines import TimeFrameStatus, TimeFrameMasks, HexitecGeneration
+
+from histogrammer.UdpHandler import UdpHandler
+from histogrammer.AcquisitionHandler import AcquisitionHandler
+from histogrammer.util import splitRegisterIntoValues, InternalLibException, T
 
 from .base_controller import BaseError
 
@@ -20,10 +25,7 @@ from collections.abc import Callable
 
 ConnectionStatus = Literal["disconnected", "connected", "configuring", "running", "completed"]
 AcquisitionMode = Literal["continuous", "timed", "count frames"]
-T = TypeVar("T")
-
-class InternalLibException(BaseError):
-    """Exception that translates a RuntimeError thrown by the Pybind11 module into a python exception"""
+OutputMode = Literal["UDP", "HDF5"]
 
 
 class Counters(NamedTuple):
@@ -41,24 +43,6 @@ class Counters(NamedTuple):
     finishedTimeFrame: int = 0
     """Total number of Finished (output) time frames"""
 
-def _get_bitwise_trailing_zeros(val):
-    """Method to get the number of trailing 0s on a binary value.
-    Used to calculate how much to shift a masked value to return the specific value regardless of its position"""
-    c = 0
-    v = (val ^ (val - 1)) >> 1
-    while v > 0:
-        v >>= 1
-        c += 1
-    return c
-
-def _splitRegisterIntoValues(reg: int, *masks: int) -> tuple[int, ...]:
-    retVal: tuple[int] = ()
-    for mask in masks:
-        shift = _get_bitwise_trailing_zeros(mask)
-        retVal = retVal + ((reg & mask) >> shift,)
-
-    return retVal
-        
 
 
 class Histogrammer:
@@ -79,18 +63,10 @@ class Histogrammer:
         
         self.hexitec: XDmaHexitec = None
 
-        self.status: ConnectionStatus = "disconnected"
+        self.udpHandler = UdpHandler(options)
+        self.acqHandler = AcquisitionHandler(options)
 
         # AQUISITION CONTROLS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        self.runTimer = 0
-        """If > 0, stops a run after that many seconds"""
-        self.input_frames = 2000000
-        """Number of Input Frames per output Time Frame"""
-        self.output_frames = 20
-        """Number of Output Time Frames"""
-
-        self.acqMode: AcquisitionMode = "count frames"
-        """Define how the length of the acquisition is defined"""
 
         # PCI DEVICE SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.useQdma = options.get("useqdma", "").lower() in ["true", "1", "yes"]
@@ -99,17 +75,7 @@ class Histogrammer:
         self.funcNum = int(options.get("func_num", 0))
 
         # UDP CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        self.source_ip = options.get("source_ip", "default")
-        self.dest_ip = options.get("dest_ip", "default")
-        self.accel_rx_ip = options.get("accel_rx_ip", "default")
-        self.accel_tx_ip = options.get("accel_tx_ip", "default")
-
-        self.source_port = int(options.get("source_port", 0))
-        self.accel_port = int(options.get("accel_port", 0))
-        self.dest_port = int(options.get("dest_port", 0))
-
-        self.connectType = HexitecUdpRxConnection.Normal
-        self.numUDPThreads = 8
+        # HANDLED BY SEPARATE CLASS
 
         # HISTOGRAM FORMAT CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~
         self.mappedMode = MappedMode.OFF
@@ -153,33 +119,6 @@ class Histogrammer:
         self.enbLPos = True
         self.enbSumming = True
         self.enbAdjPosn = True
-
-        self.counter_callback = PeriodicCallback(
-            self.read_counters_callback,
-            100)
-        
-        self.itfg_callback = PeriodicCallback(
-            self.read_itfg_status_callback,
-            100)
-
-
-    def read_counters_callback(self):
-        self.frame_counters = self.getFrameCounts()
-
-    def read_itfg_status_callback(self):
-        stat = self.getItfgStatus()
-        try:
-            self.itfg_status["status"] = TimeFrameStatus(stat[0]).name
-        except ValueError:
-            self.itfg_status["status"] = "invalid"
-        self.itfg_status["input_frame"] = stat[1]
-        self.itfg_status["output_frame"] = stat[2]
-        self.itfg_status["cycles"] = stat[3]
-
-        if stat[0] == TimeFrameStatus.FINISHED:
-            self.stop_run()
-
-
         
 
     def _run_method(self, method: Callable[..., T], *args, **kwargs) -> T:
@@ -212,11 +151,14 @@ class Histogrammer:
         try:
             self.hexitec = self._run_method(XDmaHexitec, self.useQdma, self.busNum, self.devNum, self.funcNum)
 
-            self.status = "connected"
             logging.debug("Connection to card established")
+
+            self.udpHandler.initialise(self.hexitec)
+            self.acqHandler.initialise(self.hexitec)
+            
             self.initialise()
         except (RuntimeError, InternalLibException):
-            self.status = "disconnected"
+
             self.hexitec = None
             logging.error("Unable to connected to Device. Check provided Info:")
             logging.error("BusNum: %d, DevNum: %d, FuncNum: %d", self.busNum, self.devNum, self.funcNum)
@@ -225,7 +167,8 @@ class Histogrammer:
     def disconnect(self):
         # additional clearup should almost certainly be done. Set the turn off run bit, for a start?
         self.hexitec = None  # garbage collection should cleanup the device
-        self.status = "disconnected"
+        self.udpHandler.cleanup()
+        self.acqHandler.cleanup()
 
     def initialise(self):
         """Initialise various values and Lookup Tables to the initial defaults"""
@@ -255,7 +198,7 @@ class Histogrammer:
 
         # hist format
         histFormatReg = self.hexitec.getChipReg(0, ChipRegisters.FORMAT)
-        numBins, runMode, mappedMode = _splitRegisterIntoValues(histFormatReg, 0x7, 0x7<<3, 0x7<<8)
+        numBins, runMode, mappedMode = splitRegisterIntoValues(histFormatReg, 0x7, 0x7<<3, 0x7<<8)
         
         self.mappedMode = MappedMode(mappedMode)
         self.runMode = RunMode(runMode)
@@ -263,7 +206,7 @@ class Histogrammer:
         self.numBins = NumBins(numBins)
 
         clusterReg = self.hexitec.getChipReg(0, ChipRegisters.CLUSTER)
-        cluster, trig = _splitRegisterIntoValues(clusterReg, 0x7, 0x3 << 8)
+        cluster, trig = splitRegisterIntoValues(clusterReg, 0x7, 0x3 << 8)
         self.clusterMode = ClusterMode(cluster)
         self.autoTrigMode = AutoTrigMode(trig)
 
@@ -284,7 +227,7 @@ class Histogrammer:
 
         # baseline
         baselineReg = self.hexitec.getChipReg(0, ChipRegisters.BASESUB)
-        mask, div, dither = _splitRegisterIntoValues(baselineReg, 0xF >> 4, 0xF, 0x1 >> 12)
+        mask, div, dither = splitRegisterIntoValues(baselineReg, 0xF >> 4, 0xF, 0x1 >> 12)
         self.baselineDiv = BaselineDivide(div)
         self.baselineMask = BaselineMask(mask)
         self.enableDither = bool(dither)
@@ -295,8 +238,8 @@ class Histogrammer:
         # charge sharing
         cShareReg = self.hexitec.getChipReg(0, ChipRegisters.CORR_A)
         self.enbEdgePos, self.enbNegNeb, self.enbLPos = tuple(bool(x) for x in 
-                                                              _splitRegisterIntoValues(cShareReg, 1, 2, 4))
-        self.enbSumming, self.enbAdjPosn = tuple(not x for x in _splitRegisterIntoValues(cShareReg, 0x100, 0x200))
+                                                              splitRegisterIntoValues(cShareReg, 1, 2, 4))
+        self.enbSumming, self.enbAdjPosn = tuple(not x for x in splitRegisterIntoValues(cShareReg, 0x100, 0x200))
 
 
         # UDP stuff?
@@ -306,63 +249,25 @@ class Histogrammer:
     def start_run(self):
         """Make the histogrammer begin outputting Histograms"""
         #TODO: other setup that might have to happen prior to enabling the run?
-        self.status = "configuring"
+
+        if self.acqHandler.outputMode == "HDF5":
+            self.acqHandler.setupHdfWriter()
+            self.udpHandler.stopDataMovers()
+        elif self.acqHandler.outputMode == "UDP":
+            self.acqHandler.hdfWriter = None
+            self.udpHandler.startDataMovers(self.mappedMode)
 
         self.loadBaseline()  # could we use python yield to resume the run starting after the looping waitLoadBaseline method completes?
 
-        
-        
+
     def complete_start_run(self):
-        
-        if self.acqMode == "count frames":
-            logging.debug("Setting up Internal Time Frame Generator")
-            self.hexitec.iTfgSetup(HexitecITfgMode.SWFirst, 1, True, self.input_frames, self.output_frames, 1)
-            logging.debug("Total histograms to be generated: {}".format(self.input_frames*self.output_frames))
-        else:
-            logging.debug("Disabling ITFG")
-            self.hexitec.iTfgDisable()
-
-        start = datetime.now()
-        
-        self.hexitec.clearHistAll() # this is a blocking function that takes some time, I think
-        end = datetime.now()
-        logging.warning("Clear took {} seconds".format((end - start).total_seconds()))
-
-        # reset the udp packet counters
-        self.hexitec.udpResetCounts(False)
-
-        # enable the histogramming by disabling any test pattern stuff
-        self.hexitec.enableHist()
-
-        # set the run reg to 1 to start producing histograms
-        self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 1)
-        self.status = "running"
-
-        if self.acqMode == "timed":
-            IOLoop.current().call_later(self.runTimer, self.stop_run)
-
-        if self.acqMode == "count frames":
-            self.hexitec.iTfgTrigger()
-            self.itfg_callback.start()
-        self.counter_callback.start()
+        self.udpHandler.resetCounters()
+        self.acqHandler.setupRun()
 
     def stop_run(self):
-        logging.debug("Stopping Run")
-        if self.hexitec is None or self.status != "running":
-            logging.info("Histogrammer is not running, doing nothing in stop_run")
-            return
+        self.udpHandler.stopDataMovers()
+        self.acqHandler.stop_run()
         
-        # await data mover stop?
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
-
-        self.counter_callback.stop()
-        self.itfg_callback.stop()
-        # making sure to read the current frame counts before turning off the run bit
-        # as turning off the bit flushes the histograms and we lose this information
-        self.frame_counters = self.getFrameCounts()
-        self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 0)
-        self.status = "completed"
 
     def setBaseline(self, mask: BaselineMask | None = None,
                     divide: BaselineDivide | None = None,
@@ -429,7 +334,6 @@ class Histogrammer:
             self.complete_start_run()
         else:
             IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, loopCount + 1)
-
 
     def setClusterMode(self, clusterMode: ClusterMode | None = None, autoTrigMode: AutoTrigMode | None = None):
         """Sets the cluster Mode and the auto triggering.
@@ -551,95 +455,6 @@ class Histogrammer:
         except ValueError:
             return 0
 
-    def setupUdpReceive(self, srcIP: str, destIP: str,
-                 srcPort: int, destPort: int,
-                 connectType: HexitecUdpRxConnection):
-        """Setup the UDP cores to receive data
-        
-        :param srcIP: IP address of the data source (Likely the Alpha Data card)
-        :param destIP: IP address the data is sent to (the address of the Histogrammer module)
-        :param srcPort: Port number of the data source
-        :param destPort: Port number of the histogrammer
-        :param connectType: The type of connection, Normal, Loopback, or FromHost
-        """
-
-        srcIP_int = self.getIntfromIP(srcIP)
-        destIP_int = self.getIntfromIP(destIP)
-
-        self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
-        
-        self.hexitec.setRxEthernetLoopback(0)  # disable ethernet loopback
-        self._run_method(self.hexitec.udpRxSetup,
-                         srcIP_int, destIP_int,
-                         srcPort, destPort,
-                         connectType)
-        
-        for i in range(self.hexitec.getNumRxUdp()):
-            if self.hexitec.getGeneration() == HexitecGeneration.HexitecGenHexitec:
-                self.hexitec.setRxEthernetReg(i, 0x0020, 1)  # TODO: TEMP MAGIC NUMBER, MATCHES ETHERNET_PM_TICK_REG
-
-        # disable any datamovers that might be running
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 0)
-        self._run_method(self.hexitec.stopDataMoverStreamUDP, 1)
-        
-
-    def setupUdpSend(self, srcIP: str, destIP: str,
-                     srcPort: int, destPort: int,
-                     numThreads: int, mappedMode: MappedMode):
-        """Setup the UDP cores to send Histograms to a server (usually an Odin Data instance)
-        
-        :param srcIP: THe IP address of the Histogrammer
-        :param destIP: The IP address of the destination server, to send histograms to
-        :param srcPort: Port number of the Histogrammer
-        :param destPort: Port number of the server. This will be the first port number if multiple threads are used
-        :param numThreads: Number of UDP threads to use. Each will send to a sequential Port Number in a round robin. Must be a power 2 value
-        :param mappedMode: Enum value that defines the Mapped Mode of the histogram.
-        """
-
-        srcIP_int = self.getIntfromIP(srcIP)
-        destIP_int = self.getIntfromIP(destIP)
-        
-        if not (numThreads & (numThreads - 1) == 0 and numThreads > 0 and numThreads < (1<<8)):
-            raise InternalLibException("Invalid Number of UDP RX Threads: {}. Must be power of 2".format(numThreads))
-
-
-        farmBase = 0
-        timeframe_start = -1  #TODO: this resets the start number of the timeframes every time. May not be the intended method
-        farmMask = numThreads - 1
-
-        if mappedMode == MappedMode.INTERLEAVE:
-            numThreads = numThreads * 2  # mapped interleave mode requires threads for spectra and mapped
-        logging.debug("Setting up UDP Tx With The Following settings:")
-        logging.debug("Source IP: {}, Source Port: {}, Dest IP: {}, DestPort: {}".format(srcIP_int, srcPort, destIP_int, destPort))
-        self._run_method(self.hexitec.udpTxSetup,
-                         srcIP_int, destIP_int,
-                         srcPort, destPort,
-                         0, numThreads,
-                         True, self.inter_frame_gap, False)
-        
-        # trailer mode is not disabled (becasue False), but the default values are set by this method
-        self.hexitec.disableDataMoverUDPTrailer(False, 0)
-
-        autoMode = XDmaHexitec.AutonomousMode.AutoTriggerReadAndClear
-        farmIndex = XDmaHexitec.FarmIndexMode.FarmIndexFromTF
-
-        #TODO: check for no_clear/UDP_dist to modify autoMode/farmIndex
-
-        # if mapped mode is set to allow spectra (either mappedMode OFF or mappedMode INTERLEAVE)
-        if mappedMode != MappedMode.ONLY:
-            # setup data mover farm mode for Spectra
-            logging.debug("Setting up UDP DataMover for Spectra Output")
-            self._run_method(self.hexitec.startDataMoverStreamUDP, 
-                             timeframe_start, XDmaHexitec.MappedView.Spectra, False,
-                             True, 0, farmMask, farmBase, autoMode, farmIndex)
-            farmBase = farmBase + farmMask + 1
-        
-        # if mapped mode is set to allow Mapped output (ONLY or INTERLEAVE)
-        if mappedMode != MappedMode.OFF:
-            logging.debug("Setting up UDP Datamover for Mapped Output")
-            self._run_method(self.hexitec.startDataMoverStreamUDP,
-                             timeframe_start, XDmaHexitec.MappedView.Mapped16, False,
-                             True, 1, farmMask, farmBase, autoMode, farmIndex)
 
     def getFrameCounts(self) -> Counters:
         """Return the current count of frames for an in-progress run.
@@ -774,3 +589,4 @@ class Histogrammer:
 
     def save_hdf_settings(self, filename: str):
         self.hexitec.saveSettingsHdf5(filename, self.chip_select, HexitecSaveRestore.All)
+

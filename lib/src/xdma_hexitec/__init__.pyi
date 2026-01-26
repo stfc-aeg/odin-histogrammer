@@ -105,6 +105,31 @@ class HexitecSaveRestore(IntFlag):
     All = 0x7FFFFFFF
     """Enable full flag"""
 
+class CircWriterReadoutMode(IntEnum):
+    """Readout Mode of the circular HDF Writer"""
+
+    Unknown = 0
+
+    PolledMemMapped = 1
+
+    IrqMemMapped = 2
+
+    AutoUDPThreadPerFrame = 3
+    """UNSUPPORTED"""
+
+    AutoUDPThreadPerPacket = 4
+    """UNSUPPORTED"""
+
+    AutoUDPNoTrailer = 5
+    """UNSUPPORTED"""
+
+
+class CircWriterUdpTxOnlyMode(IntEnum):
+
+    TxNormal = 0
+    TxOnlyLoop = 1
+    TxOnly1Pass = 2
+
 class HexitecITfgStat:
     """Struct container for reading the status of the ITFG"""
 
@@ -135,7 +160,7 @@ class XDmaHexitec:
         FarmIndexIncEOP = 1
         FarmIndexFromTF = 2
 
-    def __init__(self, useQdma: bool, busNum: int, devNum: int, funcNum: int):
+    def __init__(self, useQdma: bool, busNum: int, devNum: int, funcNum: int) -> None:
         """
         Initialise the XDmaHexitec class, connected to the defined XDMA device
 
@@ -866,7 +891,7 @@ class XDmaHexitec:
 
         """
     def iTfgTrigger(self) -> None:
-        """Manually Trigger the Internal Time Frame generator, it its awaiting a software signal
+        """Manually Trigger the Internal Time Frame generator, if it is awaiting a software signal
 
         """
     def iTfgSetup(self, mode: HexitecITfgMode, extTrigSrc: int, invertExtTrig: bool, inpFramesPerTF: int, numTF: int, numCycles: int) -> None:
@@ -894,7 +919,7 @@ class XDmaHexitec:
 
         """
     def stopDataMoverStreamUDP(self, qid: int) -> None:
-        """Stop the selected datamove, stopping any UDP output
+        """Stop the selected datamover, stopping any UDP output
 
         :param qid: Queue ID of the datamover to stop.
 
@@ -1027,9 +1052,12 @@ class XDmaHexitec:
         """
 
         """
-    def supportsIrqs(self) -> None:
+    def supportsIrqs(self) -> int:
         """
-
+        Read if the device is setup to support IRQs
+        
+        :return: 1 if not using QDMA (thus supporting IRQs), 0 otherwise
+        :rtype: bool
         """
     def getOneFIFOCounts(self) -> None:
         """
@@ -1149,5 +1177,77 @@ class XDmaHexitec:
         :param core: Which UDP Core to read from. Defaults to 0
         :type core: int
         :return: The Sending IP Addr as a 32 bit integer
+        :rtype: int
+        """
+
+class CircularHdfWriter:
+    """
+    Class designed to allow continuous output of histograms to a HDF5 file during an aquisition
+    Software is not designed to allow both this and the UDP output to run at the same time.
+    """
+
+    def __init__(self, hexitec: XDmaHexitec, fName: str, numEng: int,
+                 enbSpectra: bool, enbMapped: bool, sumChips: bool) -> None:
+        """
+        Create a new CircularHdfWriter to output histograms to a HDF file during an acquisition
+        
+        :param hexitec: class performing the acquisition, used to access various values.
+        :type hexitec: XDmaHexitec 
+        :param fName: Name of the HDF5 file that will be written to
+        :type fName: str
+        :param numEng: Number of energy bins
+        :type numEng: int
+        :param enbSpectra: Enable saving of Spectra data
+        :type enbSpectra: bool
+        :param enbMapped: Enable saving of Mapped data
+        :type enbMapped: bool
+        :param sumChips: Sum data from all chips
+        :type sumChips: bool
+        """
+    def setupReadoutMode(self, readoutMode: CircWriterReadoutMode, numSpectraThreadsReq: int,
+                         txOnly: CircWriterUdpTxOnlyMode ) -> None:
+        """
+        Setup the readout mode for the HdfWriter
+
+        :param readoutMode: The Readout Mode that defines how the data will be read out, and saved
+        :type readoutMode: CircWriterReadoutMode
+        :param numSpectraThreadsReq: Number of threads to use for readout. Recommended only 1
+        :type numSpectraThreadsReq: int
+        :param txOnly: Defines the UDP TX behaviour. **UNUSED**
+        :type txOnly: CircWriterUdpTxOnlyMode
+        """
+    
+    def start(self) -> None:
+        """
+        Start the Circular HDF Writer, enabling its readout and creating the output file
+        
+        This starts the number of threads requested when the readout mode was setup to listen
+        for new Time Frames, to then save out those frames when updated.
+        """
+
+    def checkProgress(self, maxTF: int) -> int:
+        """
+        Docstring for checkProgress
+        
+        
+        :param maxTF: The last time frame to check, if using multiple readout threads
+        :type maxTF: int
+        :return: The last frame processed by the writer
+        :rtype: int
+        """
+
+    def getMappedOverRuns(self) -> int:
+        """
+        Get the number of overrun Mapped frames, which are frames that have been missed
+        
+        :return: Number of Overrun Mapped Frames
+        :rtype: int
+        """
+
+    def getSpectraOverRuns(self) -> int:
+        """
+        Get the number of overrun frames, which are frames that have been missed
+        
+        :return: Number of Overrun Mapped Frames
         :rtype: int
         """
