@@ -40,7 +40,7 @@ class AcquisitionHandler(BaseHandler):
     def __init__(self, options: dict[str, str]):
         super().__init__(options)
 
-        self.acqMode: AcquisitionMode = "count frames"
+        self.acqMode: AcquisitionMode = options.get("acq_mode", "count frames")
         self.outputMode: OutputMode = options.get("output_mode", "UDP")
         self.outputFile = ""
 

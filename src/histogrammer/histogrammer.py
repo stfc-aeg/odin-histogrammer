@@ -66,16 +66,12 @@ class Histogrammer:
         self.udpHandler = UdpHandler(options)
         self.acqHandler = AcquisitionHandler(options)
 
-        # AQUISITION CONTROLS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
         # PCI DEVICE SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.useQdma = options.get("useqdma", "").lower() in ["true", "1", "yes"]
         self.busNum = int(options.get("bus_num", 0))
         self.devNum = int(options.get("dev_num", 0))
         self.funcNum = int(options.get("func_num", 0))
 
-        # UDP CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # HANDLED BY SEPARATE CLASS
 
         # HISTOGRAM FORMAT CONFIG SETTINGS~~~~~~~~~~~~~~~~~~~~
         self.mappedMode = MappedMode.OFF
@@ -103,15 +99,6 @@ class Histogrammer:
         self.lin_offset = 0.0
         self.lin_scale = 1.0
 
-        self.inter_frame_gap = 4095
-
-        self.frame_counters = Counters(0, 0, 0, 0)
-        self.itfg_status = {
-            "status": "Invalid",
-            "input_frame": 0,
-            "output_frame": 0,
-            "cycles": 0
-        }
 
         # CHARGE SHARING VALUES~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         self.enbEdgePos = True

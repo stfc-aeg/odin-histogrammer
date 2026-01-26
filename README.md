@@ -25,6 +25,11 @@ Various settings can be configured from a config file provided to Odin Control:
 | accel_tx_ip  | default | The sending IP Address of the Alveo Card.<br> *default* Uses built in default values from the library |
 | dest_ip      | default | The IP Address completed histograms will be send to.<br> *default* Uses built in default values from the library |
 | source_port | 0 | The Port number for the data source.<br>*0* uses built in default values |
-| accel_port | 0 | The Port number for the Alveo Card.<br>*0* uses built in default values |
-| dest_port | 0 | The Port number for the Odin Data instance completed histograms should be sent to. <br>*0* uses built in default values |
+| accel_port  | 0 | The Port number for the Alveo Card.<br>*0* uses built in default values |
+| dest_port   | 0 | The Port number for the Odin Data instance completed histograms should be sent to. <br>*0* uses built in default values |
 | config_dir | test/config/files | The directory containing the various extra config files that can be loaded into the Histogrammer software, such as Bad Pixel Masking and Gain Correction
+| acq_mode  | count frames | Define how to control the length of an acquisition. Options are **count frames**, * for ITFG mode, **timed** to run for a set number of seconds, and **continuous** to run until interrupted.
+| output_mode | UDP | Define how to output the Histograms, either via **UDP** or to a **HDF5** File for debugging purposes.
+| run_timer | 0 | Number of seconds to run the Acquisition for, if the mode is set to do so.
+| itfg_input | 2000000 | Number of input frames to use per Histogram if the Acquisition is setup to use the Internal Time Frame Generator
+| itfg_output | 20 | Number of Histograms to create, if the Acquisition is set up to use the Internal Time Frame Generator
