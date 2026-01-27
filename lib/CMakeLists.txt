@@ -14,23 +14,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 find_package(HDF5 COMPONENTS C HL CXX REQUIRED)
 
-# ensure the env variable, if it exists, is set as a local CMAKE variable
-if(DEFINED ENV{DET_SOFTWARE_ROOT})
-  set(DET_SOFTWARE_ROOT $ENV{DET_SOFTWARE_ROOT})
-endif()
-if(DET_SOFTWARE_ROOT)
-  message(STATUS "DET Software Root set: ${DET_SOFTWARE_ROOT}")
-  set(HEXITEC_ROOT_DIR ${DET_SOFTWARE_ROOT}/none_vme/hexitec)
-  set(HEXITEC_INCLUDE_DIRS
-    ${HEXITEC_ROOT_DIR}/include
-    ${HEXITEC_ROOT_DIR}/qdma
-    ${DET_SOFTWARE_ROOT}/libs/include
-  )
-else()
-  message(FATAL_ERROR "DET_SOFTWARE_ROOT must be set to install module")
-endif()
-
-
 set(HEXITEC_SRC_FILES
   cpp/hexitec/xdma.cpp
   cpp/hexitec/qdma.cpp
