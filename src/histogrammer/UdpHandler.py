@@ -3,7 +3,7 @@ import logging
 from functools import partial
 
 from xdma_hexitec import XDmaHexitec, HexitecUdpRxConnection
-from histogrammer.util import checkHexitecConnect, HexitecUnconnectedException
+from histogrammer.util import UsesHexitecLibrary, HexitecUnconnectedException
 from histogrammer.base_handler import BaseHandler
 from xdma_hexitec.defines import GlobalRegisters, HexitecGeneration, MappedMode
 
@@ -76,7 +76,7 @@ class UdpHandler(BaseHandler):
         self.setupUdpReceive()
         self.setupUdpSend()
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def setupUdpReceive(self, srcIP: str = None, destIP: str = None,
                         srcPort: int = None, destPort: int = None):
         """
@@ -112,7 +112,7 @@ class UdpHandler(BaseHandler):
 
         self.stopDataMovers()
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary(logging.DEBUG)
     def setupUdpSend(self, srcIP: str = None, destIP: str = None,
                      srcPort: int = None, destPort: int = None,
                      mappedMode: MappedMode = None):
@@ -153,14 +153,14 @@ class UdpHandler(BaseHandler):
                                 True, self.inter_frame_gap, False)
         
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def stopDataMovers(self):
         """Disable any datamovers that might be running"""
 
         self.hexitec.stopDataMoverStreamUDP(0)
         self.hexitec.stopDataMoverStreamUDP(1)
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def startDataMovers(self, mappedMode: MappedMode):
 
         farmBase = 0
@@ -189,7 +189,7 @@ class UdpHandler(BaseHandler):
                              timeframe_start, XDmaHexitec.MappedView.Mapped16, False,
                              True, 1, farmMask, farmBase, autoMode, farmIndex)
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def resetCounters(self):
         self.hexitec.udpResetCounts(False)
 

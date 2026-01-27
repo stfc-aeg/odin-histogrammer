@@ -667,7 +667,7 @@ class XDmaHexitec:
                       chip: int,
                       histFormat: int,
                       mappedMode: int,
-                      histShift: int = 0) -> None:
+                      histShift: int) -> None:
         """Set the format of the Histogram
 
         :param chip:       Chip number or -1 to duplicate to all chips.

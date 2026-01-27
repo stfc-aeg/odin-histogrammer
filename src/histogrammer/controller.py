@@ -206,7 +206,7 @@ class HistogramController(BaseController):
     def set(self, path: str, data) -> None:
         try:
             self.paramTree.set(path, data)
-        except (ParameterTreeError, InternalLibException) as error:
+        except (ParameterTreeError, InternalLibException, HexitecUnconnectedException) as error:
             logging.error(error)
             raise HistogramException(error)
         except AttributeError as error:

@@ -9,7 +9,7 @@ from tornado.ioloop import PeriodicCallback, IOLoop
 
 from xdma_hexitec import XDmaHexitec, CircularHdfWriter
 from xdma_hexitec import CircWriterReadoutMode, CircWriterUdpTxOnlyMode, HexitecITfgMode
-from histogrammer.util import checkHexitecConnect, AcquisitionMode, OutputMode, HexitecUnconnectedException
+from histogrammer.util import UsesHexitecLibrary, AcquisitionMode, OutputMode, HexitecUnconnectedException
 from histogrammer.base_handler import BaseHandler
 from xdma_hexitec.defines import GlobalRegisters, TimeFrameStatus, TimeFrameMasks
 
@@ -112,7 +112,7 @@ class AcquisitionHandler(BaseHandler):
         if self.itfg_status.status == "FINISHED":
             self.stop_run()
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def getItfgStatus(self) -> ITFGStatus:
         """
         Read the Internal Time Frame Generator Status registers.
@@ -137,7 +137,7 @@ class AcquisitionHandler(BaseHandler):
 
         return stat
     
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def getFrameCounter(self) -> FrameCounts:
         """
         Read the current count of frames for an in-progress run.
@@ -166,7 +166,7 @@ class AcquisitionHandler(BaseHandler):
 
         return FrameCounts(frameCount[0], sum(rawCount), inputTimeFrame, finishedTimeFrame)
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def setupHdfWriter(self):
         """
         Setup the Circular HDF Writer with the filename, and readout modes, then start it running.
@@ -178,7 +178,7 @@ class AcquisitionHandler(BaseHandler):
         self.hdfWriter.setupReadoutMode(readoutMode, 1, CircWriterUdpTxOnlyMode.TxNormal)
         self.hdfWriter.start()
 
-    @checkHexitecConnect
+    @UsesHexitecLibrary()
     def setupRun(self):
         """
         Setup the Run, configuring the histogrammer depending on run Mode
