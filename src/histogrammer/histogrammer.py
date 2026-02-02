@@ -5,13 +5,11 @@ from datetime import datetime
 from typing import Literal, TypeVar, NamedTuple
 from tornado.ioloop import PeriodicCallback, IOLoop
 
-from xdma_hexitec import XDmaHexitec, CircularHdfWriter
-from xdma_hexitec import CircWriterReadoutMode, CircWriterUdpTxOnlyMode
-from xdma_hexitec import HexitecUdpRxConnection, HexitecITfgMode, HexitecSaveRestore
+from xdma_hexitec import XDmaHexitec
+from xdma_hexitec import HexitecSaveRestore
 from xdma_hexitec.defines import MappedMode, NumBins, RunMode, ClusterMode, ClusterEnable, AutoTrigMode
 from xdma_hexitec.defines import BaselineMask, BaselineDivide, BaselineChipVals
 from xdma_hexitec.defines import Region, GlobalRegisters, ChipRegisters
-from xdma_hexitec.defines import TimeFrameStatus, TimeFrameMasks, HexitecGeneration
 
 from histogrammer.UdpHandler import UdpHandler
 from histogrammer.AcquisitionHandler import AcquisitionHandler
@@ -106,6 +104,10 @@ class Histogrammer:
         self.enbLPos = True
         self.enbSumming = True
         self.enbAdjPosn = True
+
+        self.checkRunEndFlagsCallback = PeriodicCallback(
+            self.checkRunEndFlags, 200  # ARBITARY TIME CHOICE OF 200 MILLISEONDS
+        )
         
 
     @UsesHexitecLibrary()
@@ -205,15 +207,10 @@ class Histogrammer:
                                                               splitRegisterIntoValues(cShareReg, 1, 2, 4))
         self.enbSumming, self.enbAdjPosn = tuple(not x for x in splitRegisterIntoValues(cShareReg, 0x100, 0x200))
 
-
-        # UDP stuff?
-
-        
-
     def start_run(self):
         """Make the histogrammer begin outputting Histograms"""
         #TODO: other setup that might have to happen prior to enabling the run?
-
+        logging.debug("Starting Run")
         if self.acqHandler.outputMode == "HDF5":
             self.acqHandler.setupHdfWriter()
             self.udpHandler.stopDataMovers()
@@ -226,12 +223,43 @@ class Histogrammer:
 
     def complete_start_run(self):
         self.udpHandler.resetCounters()
-        self.acqHandler.setupRun()
+        self.acqHandler.startRun()
+        self.checkRunEndFlagsCallback.start()
 
     def stop_run(self):
-        self.udpHandler.stopDataMovers()
-        self.acqHandler.stop_run()
+        logging.debug("Manually Stopping Acquisition")
+        self.acqHandler.runStatus = "completed"
+        if self.acqHandler.outputMode == "UDP":
+            self.udpHandler.stopDataMovers()
+            self.acqHandler.stopRun()
+        else:
+            # gotta wait for hdf writer to finish. let checkRunEndFlags handle it?
+            pass
+
         
+    def checkRunEndFlags(self):
+        """
+        Loop to check if the run has completed, and if all required finalising steps (hdf writer, data movers)
+        have finished what they need to do
+        """
+        if self.acqHandler.runStatus == "completed":
+            logging.debug("ACQ HANDLER STAYS STAUS COMPLETE")
+            # acqHandler says it's completed the acq, check for final steps
+            if self.acqHandler.outputMode == "UDP" and self.acqHandler.acqMode == "count frames":
+                if not self.udpHandler.areDataMoversFinished(self.acqHandler.outFrames, self.mappedMode):
+
+                    return
+            elif self.acqHandler.outputMode == "HDF5":
+                if not self.acqHandler.isHDFWriterComplete(self.hexitec.getFlushedFrame()):
+                    return
+            
+            logging.debug("UDP data movers OR hdf writer have finished writing")
+            self.acqHandler.hdfWriter = None
+            self.udpHandler.stopDataMovers()
+            self.acqHandler.stopRun()
+
+            self.checkRunEndFlagsCallback.stop()
+
     @UsesHexitecLibrary()
     def setBaseline(self, mask: BaselineMask | None = None,
                     divide: BaselineDivide | None = None,

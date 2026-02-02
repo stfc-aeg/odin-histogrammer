@@ -148,13 +148,13 @@ class HistogramController(BaseController):
                     },
                     "low": {
                         "neg": (lambda: self.histogrammer.thres_low[0],
-                                partial(self.setThreshold, "main", high=self.histogrammer.thres_low[1]),
+                                partial(self.setThreshold, "lower", high=self.histogrammer.thres_low[1]),
                                 {
                                     "min": self.histogrammer.THRES_MIN,
                                     "max": 0
                                 }),
                         "pos": (lambda: self.histogrammer.thres_low[1],
-                                partial(self.setThreshold, "main", low=self.histogrammer.thres_low[0]),
+                                partial(self.setThreshold, "lower", low=self.histogrammer.thres_low[0]),
                                 {
                                     "min": 0,
                                     "max": self.histogrammer.THRES_MAX
@@ -162,13 +162,13 @@ class HistogramController(BaseController):
                     },
                     "absolute": {
                         "low": (lambda: self.histogrammer.thres_abs[0],
-                                partial(self.setThreshold, "main", high=self.histogrammer.thres_abs[1]),
+                                partial(self.setThreshold, "absolute", high=self.histogrammer.thres_abs[1]),
                                 {
                                     "min": 0,
                                     "max": self.histogrammer.THRES_MAX
                                 }),
                         "high": (lambda: self.histogrammer.thres_abs[1],
-                                partial(self.setThreshold, "main", low=self.histogrammer.thres_abs[0]),
+                                partial(self.setThreshold, "absolute", low=self.histogrammer.thres_abs[0]),
                                 {
                                     "min": 0,
                                     "max": self.histogrammer.THRES_MAX
@@ -251,9 +251,9 @@ class HistogramController(BaseController):
 
     def setRun(self, run: bool):
         if run:
-            IOLoop.current().add_callback(self.histogrammer.start_run)
+            self.histogrammer.start_run()
         else:
-            IOLoop.current().add_callback(self.histogrammer.stop_run)
+            self.histogrammer.stop_run()
 
     def setThreshold(self, threshold: Literal["absolute", "main" , "lower"],
                      low: int, high: int):

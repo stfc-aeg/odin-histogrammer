@@ -1,11 +1,14 @@
 import logging
 
 from functools import partial
+from typing import Literal
 
 from xdma_hexitec import XDmaHexitec, HexitecUdpRxConnection
 from histogrammer.util import UsesHexitecLibrary, HexitecUnconnectedException
 from histogrammer.base_handler import BaseHandler
 from xdma_hexitec.defines import GlobalRegisters, HexitecGeneration, MappedMode
+
+dataMoverStatus = Literal["stopped", "idle", "running"]
 
 def getIntFromIP(ip: str) -> int:
     """
@@ -42,6 +45,8 @@ class UdpHandler(BaseHandler):
         self.mappedMode = MappedMode.OFF
         self.numUDPThreads = 8
         self.inter_frame_gap = 4095
+
+        self.dmStatus: list[dataMoverStatus] = ["stopped", "stopped"]
 
         self.param_tree = {
             "setup": (None, lambda _: self.setupUdp()),
@@ -160,6 +165,8 @@ class UdpHandler(BaseHandler):
         self.hexitec.stopDataMoverStreamUDP(0)
         self.hexitec.stopDataMoverStreamUDP(1)
 
+        self.dmStatus = ["stopped", "stopped"]
+
     @UsesHexitecLibrary()
     def startDataMovers(self, mappedMode: MappedMode):
 
@@ -180,19 +187,42 @@ class UdpHandler(BaseHandler):
             self.hexitec.startDataMoverStreamUDP(timeframe_start,
                                                  XDmaHexitec.MappedView.Spectra, False,
                                                  True, 0, farmMask, farmBase, autoMode, farmIndex)
+            self.dmStatus[0] = "idle"
             farmBase += farmMask + 1
         
         # if mapped mode is set to allow Mapped output (ONLY or INTERLEAVE)
         if mappedMode != MappedMode.OFF:
             logging.debug("Setting up UDP Datamover for Mapped Output")
-            self._run_method(self.hexitec.startDataMoverStreamUDP,
-                             timeframe_start, XDmaHexitec.MappedView.Mapped16, False,
-                             True, 1, farmMask, farmBase, autoMode, farmIndex)
+            self.hexitec.startDataMoverStreamUDP(timeframe_start,
+                                                 XDmaHexitec.MappedView.Mapped16, False,
+                                                 True, 1, farmMask, farmBase, autoMode, farmIndex)
+            self.dmStatus[1] = "idle"
 
     @UsesHexitecLibrary()
     def resetCounters(self):
         self.hexitec.udpResetCounts(False)
 
-    def waitDataMoverFinished(self):
-        """NOT YET CREATED"""
-        return
+    @UsesHexitecLibrary()
+    def areDataMoversFinished(self, numTF: int, mappedMode: MappedMode) -> bool:
+        finished: list[bool] = [True, True]
+        if mappedMode != MappedMode.ONLY:
+            context = self.hexitec.readDataMoverStream(0)
+            if context.tfMode & (0x8): # TODO: magic number = HEXITEC_DM0_AUTO_TF
+
+                
+                finished[0] = context.timeFrame == (numTF - 1)
+                if not finished[0]:
+                    logging.debug("Data Mover 0 Timeframe: %d out of %d", context.timeFrame, numTF)
+            else:
+                finished[0] = context.run
+        if mappedMode != MappedMode.OFF:
+            
+            context = self.hexitec.readDataMoverStream(1)
+            if context.tfMode & (0x8): # TODO: magic number = HEXITEC_DM0_AUTO_TF
+                
+                finished[1] = context.timeFrame == (numTF - 1)
+                if not finished[1]:
+                    logging.debug("Data Mover 1 Timeframe: %d out of %d", context.timeFrame, numTF)
+            else:
+                finished[1] = context.run
+        return all(finished)

@@ -138,6 +138,41 @@ class HexitecITfgStat:
     timeFrame: int
     cycles: int
 
+class DataMoverContext:
+    """Struct container for Data Mover Context"""
+    raw: list[int]
+    """Raw context copied from BRAM"""
+    readCredit: int
+    """Unused readCredit issued by QDMA"""
+    sixteenBitMode: int
+    """16 bit mode specified by calling SW"""
+    mappeView: int
+    """Specify whether to read main spectra, first 8 bins of mapped spectra or all 16 bins of mapped spectra when using mapped mode."""
+    sumChips: int
+    """Specify whetehr to sum the EngOnly spectra over all 12 chips in Hexitec 6x2"""
+    tfMode: int
+    """Specify where time frame is supplied from (user SW or firmware in future)"""
+    farmIndexMode: int
+    """"""
+    farmBase: int
+    """First farm index to use (actually Ored with incrementing index)"""
+    farmMask: int
+    """Mask to select which (usually bottom few) bits of incrementing index are used in output farm idnex."""
+    timeFrame: int
+    """Timeframe specified by software or determined by firmware."""
+    run: int
+    """Run mode to enable activity. Set after all other bits are specified."""
+    pixelColEng: int
+    """Index incrementing through energy bin and pixel column"""
+    pixelRow: int
+    """Index of pixel row within chip. 0..79"""
+    chipCol: int
+    """Index of chip column 0..5"""
+    chipRow: int
+    """Index of chip row 0..1"""
+    packetIndex: int
+    """Pack index supplied to the QDMA."""
+
 
 class XDmaHexitec:
     """
@@ -350,7 +385,7 @@ class XDmaHexitec:
 
         """
     def readSharedLUT(self, chip: int, region: int, stream: int, first: int, num: int) -> list[int]:
-        """	Read array of values from a Hexitec Charge Sharing correction LUTs. Currently shared across all pixels.
+        """Read array of values from a Hexitec Charge Sharing correction LUTs. Currently shared across all pixels.
 
         :param chip: Chip number.
         :param region: Region number, see Region Enum
@@ -966,9 +1001,14 @@ class XDmaHexitec:
         """
 
         """
-    def readDataMoverStream(self) -> None:
+    def readDataMoverStream(self, qid: int) -> DataMoverContext:
         """
-
+        Read the context values of the selected Data Mover
+        
+        :param qid: The Queue ID of the Data Mover
+        :type qid: int
+        :return: Struct containing the data mover context
+        :rtype: DataMoverContext
         """
     def getDataMoverUDPIndex(self) -> None:
         """
@@ -1251,3 +1291,4 @@ class CircularHdfWriter:
         :return: Number of Overrun Mapped Frames
         :rtype: int
         """
+

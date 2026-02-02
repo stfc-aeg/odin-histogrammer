@@ -56,11 +56,11 @@ class AcquisitionHandler(BaseHandler):
         self.hdfWriter: CircularHdfWriter = None
 
         self.counter_callback = PeriodicCallback(
-            self.getFrameCounter, 100
+            self.readCountersCallback, 100
         )
 
         self.itfg_callback = PeriodicCallback(
-            self.getItfgStatus, 100
+            self.readITFGStatusCallback, 100
         )
 
         self.acqTimeout = None
@@ -98,7 +98,7 @@ class AcquisitionHandler(BaseHandler):
 
     def cleanup(self):
         try:
-            self.stop_run()
+            self.stopRun()
         except HexitecUnconnectedException:
             pass
         super().cleanup()
@@ -110,7 +110,9 @@ class AcquisitionHandler(BaseHandler):
         self.itfg_status = self.getItfgStatus()
 
         if self.itfg_status.status == "FINISHED":
-            self.stop_run()
+            logging.debug("ITFG STATUS FINISHED")
+            self.runStatus = "completed"
+            self.itfg_callback.stop()
 
     @UsesHexitecLibrary()
     def getItfgStatus(self) -> ITFGStatus:
@@ -122,7 +124,6 @@ class AcquisitionHandler(BaseHandler):
         :return ITFGStatus.cycles: Number of Cycles completed
         :return ITFGStatus.status: Current status of the ITFG
         """
-
         stat = ITFGStatus()
         
         stat.input_frame = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_INP_FRAME)
@@ -134,7 +135,8 @@ class AcquisitionHandler(BaseHandler):
             stat.status = TimeFrameStatus(status).name
         except ValueError:
             stat.status = "INVALID"
-
+        if stat.output_frame != self.itfg_status.output_frame:
+            logging.debug("ITFG: New Output Frame %d", stat.output_frame)
         return stat
     
     @UsesHexitecLibrary()
@@ -179,7 +181,7 @@ class AcquisitionHandler(BaseHandler):
         self.hdfWriter.start()
 
     @UsesHexitecLibrary()
-    def setupRun(self):
+    def startRun(self):
         """
         Setup the Run, configuring the histogrammer depending on run Mode
         """
@@ -206,23 +208,19 @@ class AcquisitionHandler(BaseHandler):
 
         if self.acqMode == "timed":
             logging.debug("Setting timer to end run in %d seconds", self.runTimer)
-            self.acqTimeout = IOLoop.current().call_later(self.runTimer, self.stop_run)
+            self.acqTimeout = IOLoop.current().add_timeout(self.runTimer, setattr, self, "runStatus", "completed")
         
         if self.acqMode == "count frames":
             self.hexitec.iTfgTrigger()
             self.itfg_callback.start()
         self.counter_callback.start()
 
-
-    def stop_run(self):
+    @UsesHexitecLibrary()
+    def stopRun(self):
         logging.debug("Stopping Run")
 
         if self.acqTimeout is not None:
             IOLoop.current().remove_timeout(self.acqTimeout)
-
-        if self.hexitec is None or self.runStatus != "running":
-            logging.debug("Histogrammer not running, doing nothing in stop_run")
-            return
         
         self.counter_callback.stop()
         self.itfg_callback.stop()
@@ -230,38 +228,20 @@ class AcquisitionHandler(BaseHandler):
         self.frame_counters = self.getFrameCounter()
         self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 0)
 
-        if self.outputMode == "HDF5":
-            logging.debug("Waiting for Circular HDF Writer to complete")
-            lastFlushedFrame = self.hexitec.getFlushedFrame()
-            IOLoop.current().add_callback(self.waitHDFWriterComplete, lastFlushedFrame, 0)
-        else:
-            self.runStatus = "completed"
+        self.runStatus = "idle"
 
-
-
-    def waitHDFWriterComplete(self, lastTF: int, loopCount: int):
-        """Loop to wait for teh Circular HDF Writer to complete"""
+    def isHDFWriterComplete(self, lastTF: int):
 
         progress = self.hdfWriter.checkProgress(lastTF)
-        timeout = 20000
 
-        if progress >= lastTF or loopCount > timeout:
-            if loopCount > timeout:
-                logging.warning("Timed out waiting for Circular HDF Writer to finish Writing")
-                logging.warning("Current HDF Frame: %d, Last frame in firmware: %d", progress, lastTF)
-            
+        if progress >= lastTF:
             mapOverRuns, spectraOverRuns = (self.hdfWriter.getMappedOverRuns(), self.hdfWriter.getSpectraOverRuns())
             if mapOverRuns or spectraOverRuns:
                 logging.warning("HDF Writer detected %d Mapped overruns and %d spectra overruns", 
                                 mapOverRuns, spectraOverRuns)
-            
-            self.runStatus = "completed"
-            self.hdfWriter = None  # cleanup
+            return True
         else:
-            IOLoop.current().add_callback(self.waitHDFWriterComplete, lastTF, loopCount + 1)
-
-        
-
+            return False
 
 
 

@@ -34,6 +34,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     py::class_<XDmaHexitec> hexitec(m, "XDmaHexitec");
     py::class_<CircularHdfWriter> circularHdfWriter(m, "CircularHdfWriter");
     py::class_<HexitecITfgStat> HexitecITfgStat(m, "HexitecITfgStat");
+    py::class_<DataMoverContext> dmContext(m, "DataMoverContext");
 
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
@@ -176,7 +177,7 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def("disableDataMoverUDPTrailer", &XDmaHexitec::disableDataMoverUDPTrailer)
         .def("clearDataMoverOverRun", &XDmaHexitec::clearDataMoverOverRun)
         .def("getDataMoverOverRun", &XDmaHexitec::getDataMoverOverRun)
-        .def("readDataMoverStream", &XDmaHexitec::readDataMoverStream)
+        // .def("readDataMoverStream", &XDmaHexitec::readDataMoverStream)
         .def("getDataMoverUDPIndex", &XDmaHexitec::getDataMoverUDPIndex)
         .def("saveSpectraAsc", &XDmaHexitec::saveSpectraAsc)
         .def("saveSpectraDet", &XDmaHexitec::saveSpectraDet)
@@ -326,6 +327,21 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
                              enbSpectra, enbMapped, sumChips, extComment);
     });
 
+    // hexitec.def("getDataMoverContext", [](XDmaHexitec &self, int qid)
+    // {
+    //     volatile uint32_t *dataMoverRegs, *ptr;
+    //     dataMoverRegs = self.m_xdma->m_regsBAR.m_base+HEXITEC_DATA_MOVER_BASE/sizeof(uint32_t);
+    //     ptr = dataMoverRegs + HEXITEC_DM_CONTEXT_OFFSET/sizeof(uint32_t)+qid*8;
+    //     std::vector<uint32_t> retVal(ptr, ptr+4);
+    //     return retVal;
+    // });
+
+    hexitec.def("readDataMoverStream", [](XDmaHexitec &self, int qid)
+    {
+        DataMoverContext context;
+        self.readDataMoverStream(&context, qid);
+        return context;
+    });
 
     circularHdfWriter.def(py::init<XDmaHexitec&, const char*, int, bool, bool, bool>())
         .def("setupReadoutMode", &CircularHdfWriter::setupReadoutMode)
@@ -340,6 +356,24 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .def_readwrite("inpFrame", &HexitecITfgStat::status)
         .def_readwrite("timeFrame", &HexitecITfgStat::status)
         .def_readwrite("cycles", &HexitecITfgStat::status);
+
+    dmContext.def(py::init<>())
+        .def_readonly("raw", &DataMoverContext::raw)
+        .def_readonly("readCredit", &DataMoverContext::readCredit)
+        .def_readonly("sixteenBitMode", &DataMoverContext::sixteenBitMode)
+        .def_readonly("mappedView", &DataMoverContext::mappeView)
+        .def_readonly("sumChips", &DataMoverContext::sumChips)
+        .def_readonly("tfMode", &DataMoverContext::tfMode)
+        .def_readonly("farmIndexMode", &DataMoverContext::farmIndexMode)
+        .def_readonly("farmBase", &DataMoverContext::farmBase)
+        .def_readonly("farmMask", &DataMoverContext::farmMask)
+        .def_readonly("timeFrame", &DataMoverContext::timeFrame)
+        .def_readonly("run", &DataMoverContext::run)
+        .def_readonly("pixelColEng", &DataMoverContext::pixelColEng)
+        .def_readonly("pixelRow", &DataMoverContext::pixelRow)
+        .def_readonly("chipCol", &DataMoverContext::chipCol)
+        .def_readonly("chipRow", &DataMoverContext::chipRow)
+        .def_readonly("packetIndex", &DataMoverContext::packetIndex);
 
     py::native_enum<HexitecGeneration>(m, "HexitecGeneration", "enum.IntEnum")
         .value("HexitecGenHexitec", HexitecGeneration::HexitecGenHexitec)
