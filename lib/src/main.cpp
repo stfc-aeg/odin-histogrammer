@@ -6,6 +6,8 @@
 #include "xdma_hexitec.h"
 #include "circular_hdf_writer.h"
 
+#include "hexitec_version.h"
+
 #include <stdint.h>
 #include <iostream>
 #include <string>
@@ -40,6 +42,12 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);
 #else
     m.attr("__version__") = "dev";
+#endif
+
+#ifdef SVN_VERSION
+    m.attr("lib_version") = MACRO_STRINGIFY(SVN_VERSION);
+#else
+    m.attr("lib_version") = "dev";
 #endif
 
     hexitec.def(py::init<int, int, int, int>(), py::call_guard<py::scoped_ostream_redirect, py::scoped_estream_redirect>())
@@ -378,14 +386,12 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
     py::native_enum<HexitecGeneration>(m, "HexitecGeneration", "enum.IntEnum")
         .value("HexitecGenHexitec", HexitecGeneration::HexitecGenHexitec)
         .value("HexitecGenMHz", HexitecGeneration::HexitecGenMHz)
-        .export_values()
         .finalize();
 
     py::native_enum<HexitecUdpRxConnection>(m, "HexitecUdpRxConnection", "enum.IntEnum")
         .value("Normal",   HexitecUdpRxConnection::Normal)
         .value("Loopback", HexitecUdpRxConnection::Loopback)
         .value("FromHost", HexitecUdpRxConnection::FromHost)
-        .export_values()
         .finalize();
 
     py::native_enum<HexitecITfgMode>(m, "HexitecITfgMode", "enum.IntEnum")
@@ -398,35 +404,30 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .value("HWCountedEach", HexitecITfgMode::HWCountedEach)
         .value("HWIncEach",     HexitecITfgMode::HWIncEach)
         .value("HWGated",       HexitecITfgMode::HWGated)
-        .export_values()
         .finalize();
 
     py::native_enum<XDmaHexitec::MappedView>(hexitec, "MappedView", "enum.IntEnum", "Define the spectra readout for a Data Mover")
         .value("Spectra", XDmaHexitec::MappedView::MappedViewSpectra)
         .value("Mapped8", XDmaHexitec::MappedView::MappedViewMapped8)
         .value("Mapped16", XDmaHexitec::MappedView::MappedViewMapped16)
-        .export_values()
         .finalize();
     
     py::native_enum<XDmaHexitec::AutonomousMode>(hexitec, "AutonomousMode", "enum.IntEnum")
         .value("AutoOff", XDmaHexitec::AutonomousMode::AutoOff)
         .value("AutoTriggerRead", XDmaHexitec::AutonomousMode::AutoTriggerRead)
         .value("AutoTriggerReadAndClear", XDmaHexitec::AutonomousMode::AutoTriggerReadAndClear)
-        .export_values()
         .finalize();
 
     py::native_enum<XDmaHexitec::FarmIndexMode>(hexitec, "FarmIndexMode", "enum.IntEnum")
         .value("FarmIndexIncEOF", XDmaHexitec::FarmIndexMode::FarmIndexIncEOF)
         .value("FarmIndexIncEOP", XDmaHexitec::FarmIndexMode::FarmIndexIncEOP)
         .value("FarmIndexFromTF", XDmaHexitec::FarmIndexMode::FarmIndexFromTF)
-        .export_values()
         .finalize();
 
     py::native_enum<HexitecLoadSaveBaseLine>(m, "HexitecLoadSaveBaseLine", "enum.IntEnum")
         .value("Request", HexitecLoadSaveBaseLine::Request)
         .value("RequestAndWait", HexitecLoadSaveBaseLine::RequestAndWait)
         .value("UseShortBurst", HexitecLoadSaveBaseLine::UseShortBurst)
-        .export_values()
         .finalize();
 
     py::native_enum<HexitecSaveRestore>(m, "HexitecSaveRestore", "enum.IntFlag")
@@ -449,7 +450,6 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .value("OutputPixelMask", HexitecSaveRestore::HexitecSaveRestore_OutputPixelMask)
         .value("RequireAll",      HexitecSaveRestore::HexitecSaveRestore_RequireAll)
         .value("All",             HexitecSaveRestore::HexitecSaveRestore_All)
-        .export_values()
         .finalize();
 
     py::native_enum<CircWriterReadoutMode>(m, "CircWriterReadoutMode", "enum.IntEnum")
@@ -459,14 +459,12 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         .value("AutoUDPThreadPerFrame", CircWriterReadoutMode::AutoUDPThreadPerFrame)
         .value("AutoUDPThreadPerPacket", CircWriterReadoutMode::AutoUDPThreadPerPacket)
         .value("AutoUDPNoTrailer", CircWriterReadoutMode::AutoUDPNoTrailer)
-        .export_values()
         .finalize();
 
     py::native_enum<CircWriterUdpTxOnlyMode>(m, "CircWriterUdpTxOnlyMode", "enum.IntEnum")
         .value("TxNormal", CircWriterUdpTxOnlyMode::TxNormal)
         .value("TxOnlyLoop", CircWriterUdpTxOnlyMode::TxOnlyLoop)
         .value("TxOnly1Pass", CircWriterUdpTxOnlyMode::TxOnly1Pass)
-        .export_values()
         .finalize();
 
 }
