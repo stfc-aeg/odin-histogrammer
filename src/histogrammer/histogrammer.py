@@ -7,6 +7,13 @@ from tornado.ioloop import PeriodicCallback, IOLoop
 
 from xdma_hexitec import XDmaHexitec
 from xdma_hexitec import HexitecSaveRestore
+
+from xdma_hexitec import MASK_HIST_FORMAT_NUMBINS, MASK_HIST_FORMAT_RUNMODE, MASK_HIST_FORMAT_MAPPEDMODE
+from xdma_hexitec import MASK_CLUSTER_MODE, MASK_CLUSTER_TRIG_MODE
+from xdma_hexitec import MASK_BSUB_MODE, MASK_BSUB_DIV, MASK_BSUB_DITHER
+from xdma_hexitec import MASK_CSHARE_ENB_EDGE, MASK_CSHARE_ENB_NEG, MASK_CSHARE_ENB_L_POS, MASK_CSHARE_DIS_SUM, MASK_CSHARE_DIS_ADJ
+from xdma_hexitec import GET_THRES_POS, GET_THRES_NEG, DATA_PATH_SHORT_BURST_MODE
+
 from xdma_hexitec.defines import MappedMode, NumBins, RunMode, ClusterMode, ClusterEnable, AutoTrigMode
 from xdma_hexitec.defines import BaselineMask, BaselineDivide, BaselineChipVals
 from xdma_hexitec.defines import Region, GlobalRegisters, ChipRegisters
@@ -15,11 +22,6 @@ from histogrammer.UdpHandler import UdpHandler
 from histogrammer.AcquisitionHandler import AcquisitionHandler
 from histogrammer.util import splitRegisterIntoValues, UsesHexitecLibrary, InternalLibException, T
 
-from .base_controller import BaseError
-
-from contextlib import redirect_stderr, redirect_stdout
-
-from collections.abc import Callable
 
 ConnectionStatus = Literal["disconnected", "connected", "configuring", "running", "completed"]
 AcquisitionMode = Literal["continuous", "timed", "count frames"]
@@ -159,12 +161,14 @@ class Histogrammer:
 
     @UsesHexitecLibrary()
     def read_values(self):
-        # TODO: too many magic number masks in here I reckon
         logging.debug("Reading Configuration from Hexitec System")
 
         # hist format
         histFormatReg = self.hexitec.getChipReg(0, ChipRegisters.FORMAT)
-        numBins, runMode, mappedMode = splitRegisterIntoValues(histFormatReg, 0x7, 0x7<<3, 0x7<<8)
+        numBins, runMode, mappedMode = splitRegisterIntoValues(histFormatReg,
+                                                               MASK_HIST_FORMAT_NUMBINS,
+                                                               MASK_HIST_FORMAT_RUNMODE,
+                                                               MASK_HIST_FORMAT_MAPPEDMODE)
         
         self.mappedMode = MappedMode(mappedMode)
         self.runMode = RunMode(runMode)
@@ -172,7 +176,7 @@ class Histogrammer:
         self.numBins = NumBins(numBins)
 
         clusterReg = self.hexitec.getChipReg(0, ChipRegisters.CLUSTER)
-        cluster, trig = splitRegisterIntoValues(clusterReg, 0x7, 0x3 << 8)
+        cluster, trig = splitRegisterIntoValues(clusterReg, MASK_CLUSTER_MODE, MASK_CLUSTER_TRIG_MODE)
         self.clusterMode = ClusterMode(cluster)
         self.autoTrigMode = AutoTrigMode(trig)
 
@@ -187,29 +191,34 @@ class Histogrammer:
         # must consider converting the uint16 value to a negative value for low and main
         neg_thres_offset = 0x2000  # seems to be the value to turn the unsigned value to signed
 
-        self.thres_abs = [(abs_thres_read >> 16) & 0x7FFF, abs_thres_read & 0x7FFF]
-        self.thres_low = [((low_thres_read >> 16) & 0x7FFF) - neg_thres_offset, low_thres_read & 0x7FFF]
-        self.thres_main = [((main_thres_read >> 16) & 0x7FFF) - neg_thres_offset, main_thres_read & 0x7FFF]
+        self.thres_abs = [GET_THRES_NEG(abs_thres_read), GET_THRES_POS(abs_thres_read)]
+        self.thres_low = [GET_THRES_NEG(low_thres_read) - neg_thres_offset, GET_THRES_POS(low_thres_read)]
+        self.thres_main = [GET_THRES_NEG(main_thres_read) - neg_thres_offset, GET_THRES_POS(main_thres_read)]
 
         # baseline
         baselineReg = self.hexitec.getChipReg(0, ChipRegisters.BASESUB)
-        mask, div, dither = splitRegisterIntoValues(baselineReg, 0xF >> 4, 0xF, 0x1 >> 12)
+        mask, div, dither = splitRegisterIntoValues(baselineReg,
+                                                    MASK_BSUB_MODE,
+                                                    MASK_BSUB_DIV,
+                                                    MASK_BSUB_DITHER)
         self.baselineDiv = BaselineDivide(div)
         self.baselineMask = BaselineMask(mask)
         self.enableDither = bool(dither)
 
-        # linearity correction
-        # TODO not sure how to get these values
-
         # charge sharing
         cShareReg = self.hexitec.getChipReg(0, ChipRegisters.CORR_A)
         self.enbEdgePos, self.enbNegNeb, self.enbLPos = tuple(bool(x) for x in 
-                                                              splitRegisterIntoValues(cShareReg, 1, 2, 4))
-        self.enbSumming, self.enbAdjPosn = tuple(not x for x in splitRegisterIntoValues(cShareReg, 0x100, 0x200))
+                                                              splitRegisterIntoValues(cShareReg,
+                                                                                      MASK_CSHARE_ENB_EDGE,
+                                                                                      MASK_CSHARE_ENB_NEG,
+                                                                                      MASK_CSHARE_ENB_L_POS))
+        self.enbSumming, self.enbAdjPosn = tuple(not x for x in
+                                                 splitRegisterIntoValues(cShareReg,
+                                                                         MASK_CSHARE_DIS_SUM,
+                                                                         MASK_CSHARE_DIS_ADJ))
 
     def start_run(self):
         """Make the histogrammer begin outputting Histograms"""
-        #TODO: other setup that might have to happen prior to enabling the run?
         logging.debug("Starting Run")
         if self.acqHandler.outputMode == "HDF5":
             self.acqHandler.setupHdfWriter()
@@ -298,35 +307,31 @@ class Histogrammer:
             self.hexitec.setChipReg(chip, ChipRegisters.BASESUB, baselineReg | BaselineChipVals.LOAD)
         
         dataPath = self.hexitec.getGlobReg(GlobalRegisters.GLB_DATA_PATH)
-        dataPath = dataPath | (1<<14)  #TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_SHORT_BURST_MODE
+        dataPath = dataPath | DATA_PATH_SHORT_BURST_MODE
         self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, dataPath)
         self.hexitec.setGlobReg(GlobalRegisters.GLB_FRAME_BURST_LENGTH, 2)
         self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 1)
 
-        IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, 0)
+        IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, 20000)
         # wait for baseline to finish loading. ioloop of some sort
 
     @UsesHexitecLibrary()
-    def waitLoadBaseline(self, dataPath, loopCount): # TODO: add a timeout to avoid it getting stuck here
+    def waitLoadBaseline(self, dataPath, loopCount):
         """Loop waiting for the baseline to finish loading, before allowing the run to start proper"""
         mask = 0xFFFFFFFFFFFFFFF
         status = self.hexitec.getGlobReg64(GlobalRegisters.GLB_LOADING_BL)
-        
-        timeout = 20000
-        # if (status & mask) and loopCount < 1000:
-        #     IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, loopCount + 1)
-        # else:
-        if not (status & mask) or loopCount > timeout:
+
+        if not (status & mask) or loopCount < 0:
             # loading complete
-            if loopCount > timeout:
+            if loopCount < 0:
                 logging.warning("Timed out waiting for Baseline to load. This may mean data is not being sent to the Histogrammer")
             self.hexitec.setGlobReg(GlobalRegisters.GLB_RUN_REG, 0)
-            dataPath = dataPath & ~ (1 << 14) #TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_SHORT_BURST_MODE
+            dataPath = dataPath & ~ DATA_PATH_SHORT_BURST_MODE
             self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, dataPath)
 
             self.complete_start_run()
         else:
-            IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, loopCount + 1)
+            IOLoop.current().add_callback(self.waitLoadBaseline, dataPath, loopCount - 1)
 
     @UsesHexitecLibrary()
     def setClusterMode(self, clusterMode: ClusterMode | None = None, autoTrigMode: AutoTrigMode | None = None):

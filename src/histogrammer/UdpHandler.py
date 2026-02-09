@@ -4,6 +4,7 @@ from functools import partial
 from typing import Literal
 
 from xdma_hexitec import XDmaHexitec, HexitecUdpRxConnection
+from xdma_hexitec import DATA_PATH_ENB_FLUSH, ETHERNET_PM_TICK_REG, DM0_AUTO_TF
 from histogrammer.util import UsesHexitecLibrary, HexitecUnconnectedException
 from histogrammer.base_handler import BaseHandler
 from xdma_hexitec.defines import GlobalRegisters, HexitecGeneration, MappedMode
@@ -104,7 +105,7 @@ class UdpHandler(BaseHandler):
         srcIP_int = getIntFromIP(srcIP)
         destIP_int = getIntFromIP(destIP)
 
-        self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, (1 << 12))  # TODO: TEMP MAGIC NUMBER, MATCHES HEXITEC_DATA_PATH_ENB_FLUSH
+        self.hexitec.setGlobReg(GlobalRegisters.GLB_DATA_PATH, DATA_PATH_ENB_FLUSH)
         self.hexitec.setRxEthernetLoopback(0) # disable ethernet loopback
 
         self.hexitec.udpRxSetup(srcIP_int, destIP_int,
@@ -113,7 +114,7 @@ class UdpHandler(BaseHandler):
         
         for i in range(self.hexitec.getNumRxUdp()):
             if self.hexitec.getGeneration() == HexitecGeneration.HexitecGenHexitec:
-                self.hexitec.setRxEthernetReg(i, 0x0020, 1)  # TODO: TEMP MAGIC NUMBER, MATCHES ETHERNET_PM_TICK_REG
+                self.hexitec.setRxEthernetReg(i, ETHERNET_PM_TICK_REG, 1)
 
         self.stopDataMovers()
 
@@ -207,7 +208,7 @@ class UdpHandler(BaseHandler):
         finished: list[bool] = [True, True]
         if mappedMode != MappedMode.ONLY:
             context = self.hexitec.readDataMoverStream(0)
-            if context.tfMode & (0x8): # TODO: magic number = HEXITEC_DM0_AUTO_TF
+            if context.tfMode & DM0_AUTO_TF:
 
                 
                 finished[0] = context.timeFrame == (numTF - 1)
@@ -218,7 +219,7 @@ class UdpHandler(BaseHandler):
         if mappedMode != MappedMode.OFF:
             
             context = self.hexitec.readDataMoverStream(1)
-            if context.tfMode & (0x8): # TODO: magic number = HEXITEC_DM0_AUTO_TF
+            if context.tfMode & DM0_AUTO_TF:
                 
                 finished[1] = context.timeFrame == (numTF - 1)
                 if not finished[1]:
