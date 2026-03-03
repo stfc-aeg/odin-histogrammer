@@ -6,8 +6,6 @@ An [Odin Control](https://github.com/odin-detector/odin-control) adapter designe
 
 Installation can be done using [Pip](https://pypi.org/project/pip/) on the cloned repo, or as a dependency in another project.
 
-This project requires access to William Helsby's `det-software` SVN repo to install the libraries required. To do this, the environment variable `DET_SOFTWARE_ROOT` may be set on the command line before attempting installation. Alternatively, the same variable can be set specifically for CMAKE in the `lib/pyproject.toml` file, under `[tool.scikit-build.cmake.define]`. This variable defaults to `usr/lib/det-software`.
-
 The project also requires [HDF5](https://www.hdfgroup.org/solutions/hdf5/) libraries be installed on the system and finable by standard CMAKE methods.
 
 ## Configuration

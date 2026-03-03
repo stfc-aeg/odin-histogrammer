@@ -1,6 +1,6 @@
 from enum import IntEnum
-from defines import HexitecGeneration
-from structs import HexitecITfgMode, HexitecUdpRxConnection, DataMoverContext, HexitecSaveRestore
+from histogrammer.lib.defines import HexitecGeneration
+from histogrammer.lib.interfaces.structs import HexitecITfgMode, HexitecUdpRxConnection, DataMoverContext, HexitecSaveRestore
 
 class XDmaHexitec:
     """

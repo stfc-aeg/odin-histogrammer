@@ -1,5 +1,5 @@
-from structs import CircWriterReadoutMode, CircWriterUdpTxOnlyMode
-from XDmaHexitec import XDmaHexitec
+from histogrammer.lib.interfaces.structs import CircWriterReadoutMode, CircWriterUdpTxOnlyMode
+from histogrammer.lib.interfaces.XDmaHexitec import XDmaHexitec
 
 class CircularHdfWriter:
     """

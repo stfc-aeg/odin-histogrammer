@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "histogrammer"
 description = "odin-control adapter project for Hexitec Histogrammer"
-dynamic = ["version"]
+version = "1.1.0"
 requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 4 - Beta",
