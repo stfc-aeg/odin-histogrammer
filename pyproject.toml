@@ -1,11 +1,11 @@
 [build-system]
 requires = ["setuptools>=64", "setuptools_scm>=8", "wheel", "scikit_build_core"]
-build-backend = "scikit_build_core.setuptools.build_meta"
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "histogrammer"
 description = "odin-control adapter project for Hexitec Histogrammer"
-dynamic = ["version"]
+version = "1.1.0"
 requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -13,8 +13,8 @@ classifiers = [
     "Programming Language :: Python :: >=3.10",
 ]
 dependencies = [
+    "pybind11",
     "odin-control @ git+https://github.com/odin-detector/odin-control",
-    "xdma_hexitec @ file:./lib"
 ]
 
 readme = "README.md"
@@ -27,14 +27,3 @@ name = "Ashley Neaves"
 odin_control = [
     "odin-control @ git+https://github.com/odin-detector/odin-control@1.6.0#egg=odin-control"
 ]
-
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools_scm]
-# Optional settings for setuptools_scm
-root = "."
-write_to = "src/histogrammer/_version.py"
-version_scheme = "no-guess-dev"
-local_scheme = "node-and-date"

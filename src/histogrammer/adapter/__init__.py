@@ -1,0 +1,1 @@
+"""histogrammer.adapter package"""

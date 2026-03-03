@@ -90,7 +90,7 @@ target_link_libraries(hexitec PUBLIC
 
 target_compile_options(hexitec PUBLIC -fPIC -O2 -fno-omit-frame-pointer)
 
-install(TARGETS hexitec DESTINATION xdma_hexitec)
+install(TARGETS hexitec DESTINATION histogrammer)
 
 
 # PYTHON MODULE LIBRARY~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -110,4 +110,4 @@ target_link_libraries(_core PUBLIC hexitec)
 target_compile_definitions(_core PRIVATE VERSION_INFO=${PROJECT_VERSION})
 
 # The install directory is the output (wheel) directory
-install(TARGETS _core DESTINATION xdma_hexitec)
+install(TARGETS _core DESTINATION histogrammer)

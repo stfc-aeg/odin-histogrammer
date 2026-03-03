@@ -3,11 +3,11 @@ import logging
 from functools import partial
 from typing import Literal
 
-from xdma_hexitec import XDmaHexitec, HexitecUdpRxConnection
-from xdma_hexitec import DATA_PATH_ENB_FLUSH, ETHERNET_PM_TICK_REG, DM0_AUTO_TF
+from histogrammer.lib import XDmaHexitec, HexitecUdpRxConnection
+from histogrammer.lib import DATA_PATH_ENB_FLUSH, ETHERNET_PM_TICK_REG, DM0_AUTO_TF
 from histogrammer.util import UsesHexitecLibrary, HexitecUnconnectedException
-from histogrammer.base_handler import BaseHandler
-from xdma_hexitec.defines import GlobalRegisters, HexitecGeneration, MappedMode
+from histogrammer.adapter.base_handler import BaseHandler
+from histogrammer.lib.defines import GlobalRegisters, HexitecGeneration, MappedMode
 
 dataMoverStatus = Literal["stopped", "idle", "running"]
 
