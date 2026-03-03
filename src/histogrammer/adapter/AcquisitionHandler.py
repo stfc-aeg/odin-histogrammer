@@ -7,11 +7,11 @@ from datetime import datetime
 
 from tornado.ioloop import PeriodicCallback, IOLoop
 
-from xdma_hexitec import XDmaHexitec, CircularHdfWriter
-from xdma_hexitec import CircWriterReadoutMode, CircWriterUdpTxOnlyMode, HexitecITfgMode
+from histogrammer.lib import XDmaHexitec, CircularHdfWriter
+from histogrammer.lib import CircWriterReadoutMode, CircWriterUdpTxOnlyMode, HexitecITfgMode
 from histogrammer.util import UsesHexitecLibrary, AcquisitionMode, OutputMode, HexitecUnconnectedException
-from histogrammer.base_handler import BaseHandler
-from xdma_hexitec.defines import GlobalRegisters, TimeFrameStatus, TimeFrameMasks
+from histogrammer.adapter.base_handler import BaseHandler
+from histogrammer.lib.defines import GlobalRegisters, TimeFrameStatus, TimeFrameMasks
 
 
 runStatus = Literal["disconnected", "idle", "configuring", "running", "completed"]

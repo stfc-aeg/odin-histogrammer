@@ -5,21 +5,21 @@ from datetime import datetime
 from typing import Literal, TypeVar, NamedTuple
 from tornado.ioloop import PeriodicCallback, IOLoop
 
-from xdma_hexitec import XDmaHexitec
-from xdma_hexitec import HexitecSaveRestore
+from histogrammer.lib import XDmaHexitec
+from histogrammer.lib import HexitecSaveRestore
 
-from xdma_hexitec import MASK_HIST_FORMAT_NUMBINS, MASK_HIST_FORMAT_RUNMODE, MASK_HIST_FORMAT_MAPPEDMODE
-from xdma_hexitec import MASK_CLUSTER_MODE, MASK_CLUSTER_TRIG_MODE
-from xdma_hexitec import MASK_BSUB_MODE, MASK_BSUB_DIV, MASK_BSUB_DITHER
-from xdma_hexitec import MASK_CSHARE_ENB_EDGE, MASK_CSHARE_ENB_NEG, MASK_CSHARE_ENB_L_POS, MASK_CSHARE_DIS_SUM, MASK_CSHARE_DIS_ADJ
-from xdma_hexitec import GET_THRES_POS, GET_THRES_NEG, DATA_PATH_SHORT_BURST_MODE
+from histogrammer.lib import MASK_HIST_FORMAT_NUMBINS, MASK_HIST_FORMAT_RUNMODE, MASK_HIST_FORMAT_MAPPEDMODE
+from histogrammer.lib import MASK_CLUSTER_MODE, MASK_CLUSTER_TRIG_MODE
+from histogrammer.lib import MASK_BSUB_MODE, MASK_BSUB_DIV, MASK_BSUB_DITHER
+from histogrammer.lib import MASK_CSHARE_ENB_EDGE, MASK_CSHARE_ENB_NEG, MASK_CSHARE_ENB_L_POS, MASK_CSHARE_DIS_SUM, MASK_CSHARE_DIS_ADJ
+from histogrammer.lib import GET_THRES_POS, GET_THRES_NEG, DATA_PATH_SHORT_BURST_MODE
 
-from xdma_hexitec.defines import MappedMode, NumBins, RunMode, ClusterMode, ClusterEnable, AutoTrigMode
-from xdma_hexitec.defines import BaselineMask, BaselineDivide, BaselineChipVals
-from xdma_hexitec.defines import Region, GlobalRegisters, ChipRegisters
+from histogrammer.lib.defines import MappedMode, NumBins, RunMode, ClusterMode, ClusterEnable, AutoTrigMode
+from histogrammer.lib.defines import BaselineMask, BaselineDivide, BaselineChipVals
+from histogrammer.lib.defines import Region, GlobalRegisters, ChipRegisters
 
-from histogrammer.UdpHandler import UdpHandler
-from histogrammer.AcquisitionHandler import AcquisitionHandler
+from histogrammer.adapter.UdpHandler import UdpHandler
+from histogrammer.adapter.AcquisitionHandler import AcquisitionHandler
 from histogrammer.util import splitRegisterIntoValues, UsesHexitecLibrary, InternalLibException, T
 
 

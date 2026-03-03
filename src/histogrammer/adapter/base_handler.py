@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from xdma_hexitec import XDmaHexitec
+from histogrammer.lib import XDmaHexitec
 
 
 class BaseHandler(ABC):

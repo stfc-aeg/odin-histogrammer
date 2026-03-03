@@ -9,11 +9,11 @@ from os import path, listdir
 from tornado.ioloop import IOLoop
 
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
-from histogrammer.histogrammer import Histogrammer
-from histogrammer.AcquisitionHandler import runStatus
+from histogrammer.adapter.histogrammer import Histogrammer
+from histogrammer.adapter.AcquisitionHandler import runStatus
 from histogrammer.util import HexitecUnconnectedException, InternalLibException
-from xdma_hexitec.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode, RunMode, NumBins
-from xdma_hexitec.defines import BaselineDivide, BaselineMask
+from histogrammer.lib.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode, RunMode, NumBins
+from histogrammer.lib.defines import BaselineDivide, BaselineMask
 
 class HistogramException(BaseError):
     """Simple exception class to wrap lower-level exceptions."""

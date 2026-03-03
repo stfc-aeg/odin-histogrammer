@@ -1,7 +1,9 @@
+"""Pybind11 Module to wrap xdma_hexitec C++ Library into python"""
+
 from __future__ import annotations
 
-from ._core import __doc__, __version__
-from ._core import *
+from histogrammer._core import __doc__, __version__
+from histogrammer._core import *
 
 
 # from ._core import DATA_PATH_ENB_FLUSH, ETHERNET_PM_TICK_REG, DM0_AUTO_TF
