@@ -14,7 +14,6 @@ classifiers = [
 ]
 dependencies = [
     "pybind11",
-    "odin-control @ git+https://github.com/odin-detector/odin-control",
 ]
 
 readme = "README.md"

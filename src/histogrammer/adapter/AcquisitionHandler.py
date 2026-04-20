@@ -16,12 +16,14 @@ from histogrammer.lib.defines import GlobalRegisters, TimeFrameStatus, TimeFrame
 
 runStatus = Literal["disconnected", "idle", "configuring", "running", "completed"]
 
+
 @dataclass
 class FrameCounts:
     frameCount: int
     rawHitCount: int
     inputTimeFrame: int
     finishedTimeFrame: int
+
 
 @dataclass
 class ITFGStatus:
@@ -35,7 +37,6 @@ class AcquisitionHandler(BaseHandler):
     """
     Object to handle running an acquisition of the Hextiec Histogrammer
     """
-
 
     def __init__(self, options: dict[str, str]):
         super().__init__(options)
@@ -82,8 +83,10 @@ class AcquisitionHandler(BaseHandler):
             },
             "itfg": {
                 "status": (lambda: self.itfg_status.status, None),
-                "remaining_in": (lambda: self.itfg_status.input_frame, None,
-                                {"description": "The number of input frames remaining for the current Histogram"}),
+                "remaining_in": (
+                    lambda: self.itfg_status.input_frame, None,
+                    {"description":
+                     "The number of input frames remaining for the current Histogram"}),
                 "num_out": (lambda: self.itfg_status.output_frame, None,
                             {"description": "The Number of Histograms created"})
             },
@@ -119,13 +122,13 @@ class AcquisitionHandler(BaseHandler):
         """
         Read the Internal Time Frame Generator Status registers.
 
-        :return ITFGStatus.input_frame: Number of input frames remaining for the current output frames
+        :return ITFGStatus.input_frame: Number of input frames remaining for the current output TF
         :return ITFGStatus.output_frame: Number of frames output by the histogrammer
         :return ITFGStatus.cycles: Number of Cycles completed
         :return ITFGStatus.status: Current status of the ITFG
         """
         stat = ITFGStatus()
-        
+
         stat.input_frame = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_INP_FRAME)
         stat.output_frame = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_TIME_FRAME)
         stat.cycles = self.hexitec.getGlobReg(GlobalRegisters.GLB_RD_ITFG_CYCLES)
@@ -138,17 +141,18 @@ class AcquisitionHandler(BaseHandler):
         if stat.output_frame != self.itfg_status.output_frame:
             logging.debug("ITFG: New Output Frame %d", stat.output_frame)
         return stat
-    
+
     @UsesHexitecLibrary()
     def getFrameCounter(self) -> FrameCounts:
         """
         Read the current count of frames for an in-progress run.
         Reading these values after a run has been stopped will return invalid values.
-        
+
         :return FrameCounts.frameCount: Total frames from the detector
         :return FrameCounts.rawHitCount: Total number of raw hits from the detector
         :return FrameCounts.inputTimeFrame: Total number of Timeframes from the UDP input
-        :return FrameCounts.finishedTimeFrame: Count of Finished Time Frames that have been output, or -1 if invalid
+        :return FrameCounts.finishedTimeFrame: Count of Finished Time Frames that have been output,
+        or -1 if invalid
         """
 
         frameCount = []
@@ -174,8 +178,9 @@ class AcquisitionHandler(BaseHandler):
         Setup the Circular HDF Writer with the filename, and readout modes, then start it running.
         """
         self.runStatus = "configuring"
-        readoutMode = CircWriterReadoutMode.IrqMemMapped if self.hexitec.supportsIrqs() else CircWriterReadoutMode.PolledMemMapped
-    
+        readoutMode = CircWriterReadoutMode.IrqMemMapped if self.hexitec.supportsIrqs(
+        ) else CircWriterReadoutMode.PolledMemMapped
+
         self.hdfWriter = CircularHdfWriter(self.hexitec, self.outputFile, -1, True, True, True)
         self.hdfWriter.setupReadoutMode(readoutMode, 1, CircWriterUdpTxOnlyMode.TxNormal)
         self.hdfWriter.start()
@@ -191,7 +196,8 @@ class AcquisitionHandler(BaseHandler):
             logging.debug("Setup Internal Time Frame Generator")
             self.hexitec.iTfgSetup(HexitecITfgMode.SWFirst, 1, True,
                                    self.inpFrames, self.outFrames, 1)
-            logging.debug("Using %d frames to output %d Histograms", self.inpFrames*self.outFrames, self.outFrames)
+            logging.debug("Using %d frames to output %d Histograms",
+                          self.inpFrames*self.outFrames, self.outFrames)
         else:
             logging.debug("Disabling ITFG")
             self.hexitec.iTfgDisable()
@@ -208,8 +214,9 @@ class AcquisitionHandler(BaseHandler):
 
         if self.acqMode == "timed":
             logging.debug("Setting timer to end run in %d seconds", self.runTimer)
-            self.acqTimeout = IOLoop.current().add_timeout(self.runTimer, setattr, self, "runStatus", "completed")
-        
+            self.acqTimeout = IOLoop.current().add_timeout(
+                self.runTimer, setattr, self, "runStatus", "completed")
+
         if self.acqMode == "count frames":
             self.hexitec.iTfgTrigger()
             self.itfg_callback.start()
@@ -221,7 +228,7 @@ class AcquisitionHandler(BaseHandler):
 
         if self.acqTimeout is not None:
             IOLoop.current().remove_timeout(self.acqTimeout)
-        
+
         self.counter_callback.stop()
         self.itfg_callback.stop()
 
@@ -235,16 +242,11 @@ class AcquisitionHandler(BaseHandler):
         progress = self.hdfWriter.checkProgress(lastTF)
 
         if progress >= lastTF:
-            mapOverRuns, spectraOverRuns = (self.hdfWriter.getMappedOverRuns(), self.hdfWriter.getSpectraOverRuns())
+            mapOverRuns, spectraOverRuns = (
+                self.hdfWriter.getMappedOverRuns(), self.hdfWriter.getSpectraOverRuns())
             if mapOverRuns or spectraOverRuns:
-                logging.warning("HDF Writer detected %d Mapped overruns and %d spectra overruns", 
+                logging.warning("HDF Writer detected %d Mapped overruns and %d spectra overruns",
                                 mapOverRuns, spectraOverRuns)
             return True
         else:
             return False
-
-
-
-
-
-
