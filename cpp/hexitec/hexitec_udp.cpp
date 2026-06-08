@@ -653,18 +653,20 @@ int XDmaHexitec::udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, s
 //	printf("\n");
 }
 
-string XDmaHexitec::udpShowRxStatus()
+string XDmaHexitec::udpShowRxStatus(bool onlyOnError)
 {
 	int i;
 	uint32_t status = getGlobReg(HEXITEC_GLB_UDP_STATUS);
 	uint64_t frame, packet;
+	if (status == 0 && onlyOnError)
+		return string();
 	stringstream sstream; 
 	for (i=0;i<m_numRxUdp; i++)
 	{
 		frame = getGlobReg64(HEXITEC_GLB_UDP_ERROR_FRAME0+2*i);
 		packet = getGlobReg64(HEXITEC_GLB_UDP_ERROR_PACKET0+2*i);
-		sstream << "UDP RX" << i << "UnexpectedSOF=" << HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(status,i);
-		sstream << ", Bad packet Num=" << HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(status, i) << ", Missing EOF=" << HEXITEC_RX_STAT_MISSING_EOF_MHZ(status, i) << endl;
+		sstream << "UDP RX" << i << ", UnexpectedSOF=" << HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(status,i) << ", Missing EOF=" << HEXITEC_RX_STAT_MISSING_EOF_MHZ(status, i);
+		sstream << ", Bad packet Num=" << HEXITEC_RX_STAT_BAD_PACKET_NUM_MHZ(status, i) << ", Bad Frame Num =" << HEXITEC_RX_STAT_FRAME_NUM_ERROR_MHZ(status, i) << endl;
 		sstream << "Flags=" << HEXITEC_RX_STAT_FLAGS_MHZ(status, i) << ", Packet=" << packet <<	", Frame=" << frame << endl;
 	}
 	return sstream.str();

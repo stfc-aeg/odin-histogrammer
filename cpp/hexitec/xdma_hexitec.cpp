@@ -1140,6 +1140,10 @@ void XDmaHexitec::startDataMoverStream(int timeFrame, enum MappedView mappedView
 	volatile uint32_t *ptr;
 	volatile uint8_t * p8;
 	uint32_t readoutMode=0;
+	
+	if (m_xdma->getStQid() < 0)
+		throw XDmaHexitecException("startDataMoverStream: QDMA queue id=%d is not valid. Does this support QDMA?", m_xdma->getStQid());
+	
 	ptr = m_dataMoverRegs + HEXITEC_DM_CONTEXT_OFFSET/sizeof(uint32_t)+m_xdma->getStQid()*8;
 
 	switch (mappedView)
@@ -1179,9 +1183,10 @@ void XDmaHexitec::startDataMoverStream(int timeFrame, enum MappedView mappedView
 	Wait for the data mover to have finished output the specified number of frames. 
 	The function determines whether the queue is working in autonomous mode. If so it wait for the time frame to reach numTF-1. 
 	If it is in non-autonomous mode, software triggers, it waits for the Run bit to drop.
-@param numTF-1		Number of time frames to have finished. 	
+@param numTF		Number of time frames to have finished. 	
 @param qid			Queue id to be started.
 */
+#if 0
 void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
 {
 	volatile uint32_t *ptr;
@@ -1195,7 +1200,7 @@ void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
 		do 
 		{
 			tf = ptr[2] >> 8;
-			tf |= static_cast<int64_t>((ptr[3] & 0xfff) << 24);
+			tf |= static_cast<int64_t>((ptr[3] & 0xfff)) << 24;
 			printf("waitDataMoverFinished: quid=%d, current TF=%ld\n", qid, tf);
 			if (tf == numTF-1)
 				numMatch++;
@@ -1220,7 +1225,51 @@ void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
 			throw XDmaHexitecException("waitDataMoverFinished: Timeout waiting DataMover queue %d to finish %ld frames", qid, numTF);
 	}
 }
+#else
+void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
+{
+	volatile uint32_t *ptr;
+	int64_t tf=numTF-1;
+	int timeout=0;
 
+	while (!isDataMoverFinished(numTF, qid, &tf) && timeout++ < 1000)
+	{
+		printf("waitDataMoverFinished: quid=%d, current TF=%ld\n", qid, tf);
+		this_thread::sleep_for(chrono::milliseconds(10));
+	}
+		
+	if (timeout == 1000)
+		throw XDmaHexitecException("waitDataMoverFinished: Timeout waiting DataMover queue %d to finish %ld frames, Last polled=%ld", qid, numTF, tf);
+}
+#endif
+/**
+	Poll to see if the data mover has finished output the specified number of frames. 
+	The function determines whether the queue is working in autonomous mode. If so it checks for the time frame to reach numTF-1. 
+	If it is in non-autonomous mode, software triggers, it returns the status of the Run bit.
+@param numTF		Number of time frames to have finished. 	
+@param qid			Queue id to be started.
+*/
+bool XDmaHexitec::isDataMoverFinished(int64_t numTF, int qid, int64_t *curTF)
+{
+	volatile uint32_t *ptr;
+	int64_t tf;
+	ptr = m_dataMoverRegs+ HEXITEC_DM_CONTEXT_OFFSET/sizeof(uint32_t)+qid*8;
+	if (*ptr & HEXITEC_DM0_AUTO_TF)
+	{
+		for (int i=0; i<2; i++)
+		{
+			tf = ptr[2] >> 8;
+			tf |= static_cast<int64_t>((ptr[3] & 0xfff)) << 24;
+			if (curTF != nullptr)
+				*curTF = tf;
+			if (tf != numTF-1)
+				return false;
+		}
+		return true;
+	}
+	else
+		return !(ptr[3] & HEXITEC_DM3_RUN);
+}
 
 /**
 	Start the datamover to output frames via the 100 G Ethernet UDP interface.
@@ -1637,4 +1686,40 @@ uint64_t XDmaHexitec::getInpTimeFrame(int chip)
 	if (chip < 0 || chip >= m_numChips)
 		throw XDmaHexitecException("getInpTimeFrame: chip=%d out of range 0...%d", chip, m_numChips-1);
 	return getGlobReg64(HEXITEC_GLB_INP_TIME_FRAME0+2*chip);
+}
+
+void XDmaHexitec::readEnabledFrames(int chip, int64_t firstTF, int numTF, uint64_t *data)
+{
+	volatile uint32_t *p, *chipSel;
+	volatile uint64_t *p64;
+	int startTF;
+	int chunkNumTF;
+	if (chip < 0 || chip >= m_numChips)
+		throw XDmaHexitecException("readEnabledFrameCounts: chip=%d out of range 0...%d", chip, m_numChips-1);
+	if (numTF > HEXITEC_ENABLED_FRAMES_SIZE)
+		throw XDmaHexitecException("readEnabledFrameCounts: chip=%d: numTF=%d > ring buffer size=%d", chip, numTF, HEXITEC_ENABLED_FRAMES_SIZE);
+	if (m_useChipSel)
+	{
+		chipSel = m_regs+m_globOffset/sizeof(uint32_t)+HEXITEC_GLB_SCOPE_CHIP_SEL;
+		*chipSel = chip;
+		p = m_regs+HEXITEC_REGION_OFFSET*HEXITEC_REGION_ENABLED_FRAMES;
+	}
+	else
+	{
+		p = m_regs+(HEXITEC_NUM_REGIONS*HEXITEC_REGION_OFFSET*chip)+HEXITEC_REGION_OFFSET*HEXITEC_REGION_ENABLED_FRAMES;
+	}
+	startTF = static_cast<int>(firstTF % HEXITEC_ENABLED_FRAMES_SIZE);
+	chunkNumTF = numTF;
+	if (numTF+startTF > HEXITEC_ENABLED_FRAMES_SIZE)
+		chunkNumTF = HEXITEC_ENABLED_FRAMES_SIZE-startTF;
+	p64 = reinterpret_cast<volatile uint64_t *>(p);
+	p64 += startTF;
+	for (int i=0; i<chunkNumTF; i++)
+		*data++ = *p64++;
+	if (chunkNumTF != numTF)
+	{
+		p64 = reinterpret_cast<volatile uint64_t *>(p);
+		for (int i=0; i<numTF-chunkNumTF; i++)
+			*data++ = *p64++;
+	}
 }

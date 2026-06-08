@@ -115,6 +115,7 @@
 #define HEXITEC_GLB_ITFG_INP_PER_TF			9		//!< Integrated time frame input detector frames per output time frame.
 #define HEXITEC_GLB_ITFG_NUM_TF				10		//!< Integrated time frame generator, number of output time frames
 #define HEXITEC_GLB_ITFG_NUM_CYCLES			12		//!< Integrated time frame generator, number of time to cycle over all output time frames
+#define HEXITEC_NUM_TFG_REGS				5
 #define HEXITEC_GLB_IRQ_ENB_RW				16		//!< Read/write access to the IRQ enable register
 #define HEXITEC_GLB_IRQ_ENB_SET				17		//!< Write 1 to set access to the IRQ enable register
 #define HEXITEC_GLB_IRQ_ENB_CLR				18		//!< Write 1 to clear access to the IRQ enable register
@@ -124,7 +125,8 @@
 #define HEXITEC_NUM_COLS					80
 #define HEXITEC_NUM_STREAMS_BLTR			40		//!< Number of parallel processing streams in Baseline, Linearity, Trigger section
 #define HEXITEC_NUM_STREAMS_CSHARE			20		//!< Number of parallel processing streams in Charge sharing and format section
-#define HEXITEC_MHZ_NUM_CHUNKS_PER_ROW			2
+#define HEXITEC_MHZ_NUM_CHUNKS_PER_ROW		2
+#define HEXITEC_MHZ_SCOPE_WORDS_PER_CHUNK	2		// Scope DMA is 256 bits wide, so takes 2 off 128bit works  per output word.
 #define HEXITEC_NUM_AXI_DMA					6		//!< Number of AXI DMA IP block to control.
 #define HEXITEC_NUM_PB_DMA					2		//!< Number of AXI DMAs used to make playback data.
 #define HEXITEC_NUM_SCOPE_DMA				4		//!< Maximum number of AXI DMAs used to record scope mode data.
@@ -179,7 +181,7 @@
 #define HEXITEC_REGION_L_POS_RECIP		16
 #define HEXITEC_REGION_L_POS_M	 		17
 #define HEXITEC_REGION_L_POS_C	 		18
-
+#define HEXITEC_REGION_ENABLED_FRAMES	30
 #define HEXITEC_REGION_FIFO_COUNTS		31
 
 #define HEXITEC_RECIP_SIZE				1024
@@ -207,7 +209,10 @@
 #define HEXITEC_REGION_OFFSET			0x10000 	//!< WORD offset between starts of regions	
 
 #define HEXITEC_SEL_ADDR_BROADCAST		63			//!< Write to same BRAM in call processing streams (so all columns) at the same time.
-
+#define HEXITEC_ENABLED_FRAMES_SIZE		4096		//!< Size of ring buffer used to store enabled Frames in timeframe counter
+#define HEXITEC_ENB_FRMS_GET_FRAME(x)	((x)&0x3FFFFFFFFFFFL)	//!< Get the number of enabled frames (into a uint64_t) from the retuned inp frames uint64_t
+#define HEXITEC_ENB_FRMS_GET_EXT_TRIG_LCH(x)	(((x)>>56)&0xF)	//!< Get the latched version of the ext trigger signal number from the retuned inp frames uint64_t. This is probably the easiest to use.
+#define HEXITEC_ENB_FRMS_GET_EXT_TRIG(x)		(((x)>>60)&0xF)	//!< Get the most recent version of the ext trigger signal number from teh last detector frame of the time frame from the retuned inp frames uint64_t
 
 #define HEXITEC_SCOPE_STAT_RUNNING		(1<<31)		//!< Sysytem is running and has not reached the end of a short busrt.
 /*
@@ -244,13 +249,17 @@
 #define HEXITEC_MHZ_UDP_SOP				(0L<<61)		// Note 0 unused at moment.
 #define HEXITEC_MHZ_UDP_EOP				(0L<<60)		// Note 0 unused at moment.
 
-#define HEXITEC_MHZ_UDP_COUNT_DIS		(1L<<56)
+#define HEXITEC_MHZ_UDP0_DET_FRAME(x)		((x)&0xFFFFFFFFFFFFL)		//!< Get detector frame number from UDP header 64 bit word 0
+#define HEXITEC_MHZ_UDP01_TIMEFRAME(d0,d1)	(((d0)>>48)&0xFFFFL |((d1)<<16)&0x7FFFF0000L)		//!< Get Alpha Data Time frame from UDP header  64 nit words 0 and 1
+
+#define HEXITEC_MHZ_UDP7_COUNT_DIS		(1L<<56)
 #define HEXITEC_MHZ_UDP7_EXTTRIG(val)	((((uint64_t)(val))&0xF)<<48)
 
 #define HEXITEC_SC_BYTES_PER_QUARTER_LINE	16		//!< Each 1/4 of Scope DMA transfers 128 bits, 16 bytes per beat
 #define HEXITEC_SC_BYTES_PER_BEAT		64			//!< Each quad of 1/4 line Scope DMA beats transfer a total of 512 bits, 64 bytes per beat
 #define HEXITEC_SC_HEADER_BEATS			1			//!< Number of 128 bit data beats of header in scopemode frame.
 #define HEXITEC_SC_BYTES_QUARTER_FRAME		((HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW+HEXITEC_SC_HEADER_BEATS)*HEXITEC_SC_BYTES_PER_QUARTER_LINE)	//!< Number of bytes in each scopemode (1/4) frame
+#define HEXITEC_MHZ_SCOPE_FRAME_SIZE_BYTES ((HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW+HEXITEC_SC_HEADER_BEATS)*HEXITEC_SC_BYTES_PER_BEAT)
 
 #define HEXITEC_DMA_STATE_DESC_CONF		(1<<0)
 #define HEXITEC_DMA_STATE_BUFFER_CONF	(1<<1)
@@ -274,7 +283,7 @@
 #define HEXITEC_DATA_PATH_ENB_FLUSH_ALL			(1<<13)	//!< Enable firmware initiate histogram cache flush at end of frame. Use for circular buffer mode. Do not use if cycling over frames multiple times.
 
 #define HEXITEC_DATA_PATH_SHORT_BURST_MODE		(1<<14)	//!< Enable (short) burst mode where only the number of frames specified by HEXITEC_GLB_FRAME_BURST_LENGTH are processed
-														//!< Generally used to debug baseline tracking.
+#define HEXITEC_DATA_PATH_REPLICATE_UDP			(1<<15)	//!< Replicate Raw UDP data from the head onto the UDP output port.
 #define HEXITEC_RUN_RUN						(1<<0)		//!< System Run bit, asserted to start system with normal (UDP) or placback data
 #define HEXITEC_RUN_DIS_RESET_FRAME_COUNT	(1<<1)		//!< Disabel reset of fraem count at start of run, particularly for use with short bursts when debugging baseline settling
 
@@ -282,6 +291,7 @@
 
 #define HEXITEC_SCOPE_GLOB_SRC_INPUT			0		//!< Scope capture frame data from input multiplexer, either UDP or from playback
 #define HEXITEC_SCOPE_GLOB_SRC_TPG				1		//!< Scope capture data from test pattern generator (counters) in scope mode block
+#define HEXITEC_SCOPE_GLOB_SRC_WAIT_COUNT_ENB	(1<<31)	//!< Scope waits for CountEnb (not UDP_BIT_HIST_DISABLE) before starting scope mode capture.
 
 
 #define HEXITEC_IRQ_FLUSHED_FRAME			(0)		//!< Bit and IRQ number to enable and clear new Flush Frame token IRQ
@@ -291,13 +301,15 @@
 #define HEXITEC_IRQ_CLEAR_DONE				(4)		//!< Bit and IRQ number  to enable and clear HBM clear finished IRQ (not fully implemented)
 
 
-#define HEXITEC_RX_STAT_BAD_PACKET_NUM_MHZ(x, i)    (((x)>>(8*i+3))&1)	//!< Packet with SOF is not 0, or packet with EOF in not 1
-#define HEXITEC_RX_STAT_MISSING_EOF_MHZ(x, i)    (((x)>>(8*i+2))&1)		//!< 2nd packet does snot have EOF
-#define HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(x, i)    (((x)>>(8*i+1))&1)	//!< 2nd Packet has SOF
-#define HEXITEC_RX_STAT_FLAGS_MHZ(x, i)    (((x)>>(8*i+4))&15)			//!< SOA/EOA/SOF/EOF flags from first errant frame
+#define HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(x, i)    (((x)>>(10*i+1))&1)	//!< 2nd Packet has SOF
+#define HEXITEC_RX_STAT_FRAME_NUM_ERROR_MHZ(x, i)	(((x)>>(10*i+2))&1)	//!< Frame number changes between first and 2nd packet
+#define HEXITEC_RX_STAT_BAD_PACKET_NUM_MHZ(x, i)    (((x)>>(10*i+3))&1)	//!< Packet with SOF is not 0, or packet with EOF in not 1
+#define HEXITEC_RX_STAT_MISSING_EOF_MHZ(x, i)    	(((x)>>(10*i+4))&1)	//!< 2nd packet does not have EOF set
+#define HEXITEC_RX_STAT_FLAGS_MHZ(x, i)    			(((x)>>(10*i+5))&15)			//!< SOA/EOA/SOF/EOF flags from first errant frame
 
 #define HEXITEC_INP_TF_GET_TIME_FRAME(x)		((x)&0x7FFFFFFFFL)		//!< Get time frame in UDP header from {@link HEXITEC_GLB_INP_TIME_FRAME0}
-#define HEXITEC_INP_TF_GET_COUNT_ENG(x)			((x)>>63)&1L)			//!< Get Count Enb from UDP header from {@link HEXITEC_GLB_INP_TIME_FRAME0}
+#define HEXITEC_INP_TF_GET_EXT_TRIG(x)			(((x)>>59)&0xFL)		//!< Get up to 4 bits of external trigger from {@link HEXITEC_GLB_INP_TIME_FRAME0}
+#define HEXITEC_INP_TF_GET_COUNT_ENG(x)			(((x)>>63)&1L)			//!< Get Count Enb from UDP header from {@link HEXITEC_GLB_INP_TIME_FRAME0}
 
 /** @defgroup HEXITEC_FEATURES_DEFS		Macros to describe control of how the baseline estimate is updated.
 	@ingroup HEXITEC_REGS_DEFS
@@ -754,7 +766,7 @@
 #define HEXITEC_ITFG_TRIG_MODE_SWINC		3			//!< Wait for SW trig to start first then inc frame on each trig
 #define HEXITEC_ITFG_TRIG_MODE_SWENB		4			//!< Count while SW Enb high, stop when low, inc TF on falling edge
 #define HEXITEC_ITFG_TRIG_MODE_HWFIRST		9			//!< Wait HW Trig then run burst of nTF x nDetFrames 
-#define HEXITEC_ITFG_TRIG_MODE_HWEACH		1			//!< Wait for HW trig to start each burst of nDetFrames
+#define HEXITEC_ITFG_TRIG_MODE_HWEACH		10			//!< Wait for HW trig to start each burst of nDetFrames
 #define HEXITEC_ITFG_TRIG_MODE_HWINC		11			//!< Wait for HW trig to start first then inc frame on each trig
 #define HEXITEC_ITFG_TRIG_MODE_HWENB		12			//!< Count while HW Enb high, stop when low, inc TF on falling
 
@@ -944,6 +956,12 @@ enum HexitecLoadSaveBaseLine
 	RequestAndWait,	//!< Request Load/Save Baseline and then wait until finished, must be called with the system running.
 	UseShortBurst	//!< Use the short burst feature to enable the system to run for 2 frames at a time to receive and process the request
  };
+ enum HexitecScopeMemlayout {
+	 HexitecScopeMemDefault,	//!< Default layout from features registers, currently places scope mode over histograms only
+	 HexitecScopeMemUsePB,		//!< Reused playback memory for scope mode
+	 HexitecScopeMemAll		//!< use All HBM for scope mode data
+ };
+	 
 class XDmaHexitec {
 	int m_numChips;
 	int m_numChipCols=1;		//!< Number of columns of chips in e.g. 6 x 2 array
@@ -981,7 +999,24 @@ class XDmaHexitec {
 	int m_numProcCol=1;
 	bool m_hasFIFOMon=false;
 	int m_maxBitsClusterGrade=0;
+	int64_t m_scopeHistFrame=0L;
 public :
+//! [AXI_DMA_DESCRIPTOR]
+/* This has  to be padded to at least 64 bytes boundaries and the padding space is used to store the virtual addresses of the descriptor and optionally data for ARM/Linux code */
+	struct AXIDMADesc
+	{
+		uint64_t physNext;
+		uint64_t physAddr;
+		uint32_t reserved1[2];
+		uint32_t control;
+		uint32_t status;
+		uint32_t app[5];
+		uint32_t frameNum;
+		uint32_t pad1;
+		uint32_t pad2;
+	};
+//! [AXI_DMA_DESCRIPTOR]
+
 	XDmaHexitec(int useQDma, int busNum, int devNum, int funcNum);
 	~XDmaHexitec();
 	XDma *m_xdma;		// WIH 28/6/2023 .. For Polymorphism to work this needs to be a pointer.
@@ -1120,7 +1155,7 @@ public :
 	void udpTxSetup(uint32_t *accelIpAddrP, uint32_t *serverIpAddrP, int accelPort, int serverPort, int farmBase, int farmNum, bool enbFarmMode, uint16_t interFrameGap, bool useArp);
 	int getUdpTxTestSocket(int index);
 	int udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, size_t payloadBytes, int debugTag=0, bool discardStale=false, int64_t *dataMoverOverRunPtr=nullptr);
-	string udpShowRxStatus();
+	string udpShowRxStatus(bool onlyOnError);
 
 	void iTfgDisable();
 	void iTfgTrigger();
@@ -1134,6 +1169,7 @@ public :
 							FarmIndexFromTF }; //!< FarmIndex is equal to the LSBits of time frame, so fixed for a complete time frame.
 	void startDataMoverStream(int timeFrame, enum MappedView mappedView, bool sixteenBit, bool sumChips, enum AutonomousMode autoMode=AutoOff);
 	void waitDataMoverFinished(int64_t numTF, int qid);
+	bool isDataMoverFinished(int64_t numTF, int qid, int64_t *curTF=nullptr);
 	void stopDataMoverStreamUDP(int qid);
 	int  startDataMoverStreamUDP(int64_t timeFrameExt, enum MappedView mappedView, bool sixteenBit, bool sumChips, int qid, int farmMask, int farmBase, enum AutonomousMode autoMode=AutoOff, enum FarmIndexMode farmIndexMode = FarmIndexIncEOF);
 	void startDataMoverEvList(int numQueues);
@@ -1150,7 +1186,8 @@ public :
 	uint64_t getFlushedFrame();
 	const char * getBsubMaskName(int bsub) { if (bsub <0 || bsub > 15) throw XDmaHexitecException("getBsubName: invalid bsub %d", bsub); return m_bsubMaskNames[bsub];}
 	const char * getAutoTrigName(int rate) { if (rate < 0 || rate > 3) throw XDmaHexitecException("getAutoTrigName: invalid autoTrig %d", rate); return m_autoTrigNames[rate];}
-	const char * getClsuterModeName(int cm){ if (cm <0 || cm > 7)      throw XDmaHexitecException("getClsuterModeName: invalid cluster Mode %d", cm); return m_clusterModeNames[cm];}
+	const char * getClusterModeName(int cm){ if (cm <0 || cm > 7)      throw XDmaHexitecException("getClusterModeName: invalid cluster Mode %d", cm); return m_clusterModeNames[cm];}
+	const char * getITfgModeNames(int mode){ if (mode<0 || mode > 12)  throw XDmaHexitecException("getITfgModeNames: invalid iTfg Mode %d", mode); return m_iTfgModeNames[mode]; }
 	
 	void getDiagnosticCounters(int chip, uint32_t *frameCount, uint32_t *rawHitCount);
 	void getDiagnosticCounters(uint32_t *frameCount, uint32_t *rawHitCount);
@@ -1193,6 +1230,32 @@ public :
 	void eventListOpenFiles(char * rootFname);
 	void eventListWaitIdle();
 	uint32_t eventListCalcDataPath(int numThreads, bool useQdma, HexitecEventListSizes eventSizes);
+	void setScopeMemory(enum HexitecScopeMemlayout layout);
+	void dmaBuildScopeDesc(int numFramesTotal);
+	void armScopeMode(enum HexitecScopeMemlayout memLayout, int numFrames, bool waitCountEnb);
+	void dmaScopeWaitIdle(double timeOut);
+	void readDmaDesc(int stream, int first, int num, XDmaHexitec::AXIDMADesc *descBuff);
+	void readScopeDataMHz(int firstFrame, int numFrames, void *outputBuffer);
+	void readAndHistScope(int numFrames, int absHighThres, int absLowThres, int posThres, uint32_t *rawHist1d, uint32_t *rawHist2d, uint32_t *bsubHist1d, uint32_t *bsubHist2d, uint32_t *bsubHist3d, int maxErrors, int &errors, bool noClear);
+	void histScopeDataMHz(int frame, int numFrames, int absHighThres, int absLowThres, int posThres, uint8_t *frameBuffer,  
+							uint32_t *rawHist1d, uint32_t *rawHist2d, uint32_t *bsubHist1d, uint32_t *bsubHist2d, uint32_t *bsubHist3d, int maxErrors, int &errors, int64_t &prevExtTF, bool &prevCountEnb);
+	string decodeDataPath();
+	string decodeDataPath(uint32_t dataPath);
+	
+	string decodeBaseline(int chip);
+	string decodeBaseline(uint32_t baselineReg);
+	string decodeClusterMode(int chip);
+	string decodeClusterMode(uint32_t clusterMode);
+	string decodeClusterEnable(int chip);
+	string decodeClusterEnable(uint32_t clusterEnb);
+	string decodeHistFormat(int chip);
+	string decodeClusterGrade(int chip);
+	string decodeClusterGrade(uint32_t clusterGrade);
+	void iTfgGetSetup(HexitecITfgMode &mode, int &extTrigSrc, bool &invertExtTrig, uint32_t &inpFramesPerTF, uint64_t &numTF, uint32_t &numCycles);
+	const char *getITfgStatusName(uint32_t status);
+	void decodeDataMoverStream(int qid, bool force, string &setup , string & status, bool &running, bool &setupChange, bool & statusChange);
+	void readEnabledFrames(int chip, int64_t firstTF, int numTF, uint64_t *data);
+
 private:
 	void initDMA();
 	void initDataMover();
@@ -1236,20 +1299,6 @@ private:
 	void hdf5AddStringAttribute(H5::DataSet &ds, const char * rootName, int chip, const char * cStr);
 	void hdf5AddStringAttribute(H5::DataSet &ds, const char * rootName, int chip, std::string str);
 
-//! [AXI_DMA_DESCRIPTOR]
-/* This has  to be padded to at least 64 bytes boundaries and the padding space is used to store the virtual addresses of the descriptor and optionally data for ARM/Linux code */
-	struct AXIDMADesc
-	{
-		uint64_t physNext;
-		uint64_t physAddr;
-		uint32_t reserved1[2];
-		uint32_t control;
-		uint32_t status;
-		uint32_t app[5];
-		uint32_t frameNum;
-		uint32_t pad1;
-	};
-//! [AXI_DMA_DESCRIPTOR]
 //! [AXI_DMA_STREAM]
 	struct DMAStream
 	{
@@ -1266,7 +1315,7 @@ private:
 		u_int32_t validFrameBytes=0;		//!< If >0, this alllows the bytes per frame to be output to be less than the aligned size (maxBlockBytes)
 		int32_t definedDesc=0;
 		int32_t numFrames=0;
-		uint32_t * virtBase;		// Virtual base address of the control registers.
+		uint32_t * virtBase=nullptr;		// Virtual base address of the control registers.
 		enum {AllOneFrame, FramePerDesc, FrameByBytes } frameRule;
 		DMAStream() { memset( this, 0, sizeof(*this) ) ; }; // Don't used any Virtual functions in this inner class, or change this initialisation.
 		int readoutCurDesc = 0;
@@ -1296,10 +1345,19 @@ private:
 	};
 	DataFormat m_dataFormat[HEXITEC_MAX_CHIPS];
 	DMAStream m_dmaStream[HEXITEC_NUM_AXI_DMA];
+	struct DataMoverState 
+	{
+		uint32_t dm0=0, dm2=0, dm3=0;
+	} m_prevDataMoverState[HEXITEC_DM_NUM_QUEUES];
 	const char *m_bsubMaskNames[16] ={"Always Update", "Main Trigger", "Low Trigger", "Fixed Baseline", "Unused4", "Main Or 4 neb", "Low or 3 Neb", "Main or Low And4 neb", 
 									"Unused8", "Unused9", "Unused10", "Unused11", "Unused12", "Main or 8 neb", "Low or 8 neb", "Main or low and 8 neb" };
 	const char *m_clusterModeNames[8] = {"Independent", "Lone Positive", "Lone Pos & Neg", "Main Positive", "Main Pos & Neg", "Main+low Pos & Neg", "Auto or man pos", "Auto Only"};
 	const char *m_autoTrigNames[4]  = {"1 in 16", "1 in 8", "1 in 4", "1 in 2"};
+	const char *m_iTfgModeNames[13] =  {"Start immediately", "Wait SW then burst", "Wait SW each frame", "Inc Frame on SW", "CountENb from SW", "5 Unused", "6 Unused", "7 Unused", "8 Unused", 
+	"Wait HW then burst", "Wait HW each frame", "Inc Frame from HW", "Use Hw as Count enb" };
+	const char * m_mappedViewNames[4] =  {"Spectrum", "Reserved", "Mapped 8", "Mapped 16"};
+	const char * m_DMfarmIndexModeNames[4] = {"Inc each Frame", "Inc each Packet", "From timeframe", "Reserved"};
+
 	struct EventListWriter 
 	{
 		std::mutex m_mutex;
@@ -1321,6 +1379,7 @@ private:
 	bool m_eventWriteIncludeLength=false;
 	HexitecEventListSizes m_eventListEventSize=EventSize32;
 	void eventListWrite(int tNum);
+
 	};
 #endif
 

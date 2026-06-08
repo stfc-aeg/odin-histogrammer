@@ -31,11 +31,11 @@ using namespace std;
 
 void XDmaHexitec::initDMA()
 {
-	uint64_t  pbBytes, scBytes;
+	uint64_t pbBytes, scBytes;
 	uint64_t addr;
 	uint32_t pbFrameSizeBytes = HEXITEC_MHZ_PB_BYTES_HALF_FRAME;		// 80 rows * 2 chunks per row * 256 bits for each DMA
-	uint32_t scFrameSizeBytes = (HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW+HEXITEC_MHZ_PB_HEADER_BEATS)*16;		// 80 rows * 2 chunks per row * 128 bits for each DMA
-	uint32_t pbFrameSizeBytesAligned;
+	uint32_t scFrameSizeBytes = HEXITEC_SC_BYTES_QUARTER_FRAME;		// 80 rows * 2 chunks per row * 128 bits for each DMA
+	uint32_t pbFrameSizeBytesAligned, scFrameSizeBytesAligned;
 	uint32_t numDesc;
 	int i;
 	uint32_t features[HEXITEC_NUM_FEATURE_REGS];
@@ -47,9 +47,9 @@ void XDmaHexitec::initDMA()
 		pbFrameSizeBytes = m_numChips*HEXITEC_NUM_ROWS*HEXITEC_NUM_COLS*sizeof(uint16_t)+sizeof(uint64_t);
 	}
 	pbFrameSizeBytesAligned = (pbFrameSizeBytes+63) & 0xFFFFFFC0;
-	
+	scFrameSizeBytesAligned = (scFrameSizeBytes+63) & 0xFFFFFFC0;	// Inherently only 128 bit (16 bytes) aligned, needs to be 32 byte aligned for DMA and 64 byte aligned to intermingle with AXIDesc
 	hbmBytesPerPort = m_hbmHist.m_histConf.TotalMemWords*(m_hbmHist.m_histConf.NBitsDataHist/8);
-	printf("initDMA: determined hbmBytesPerPort=0x%08lX\n", hbmBytesPerPort);
+	printf("initDMA: determined hbmBytesPerPort=0x%08lX and sizeof (AXDMADesc)=%d\n", hbmBytesPerPort, sizeof(AXIDMADesc));
 	for (i=0; i<HEXITEC_NUM_AXI_DMA; i++)
 		m_dmaStream[i].baseAddr = 0;
 	readGlobRegs(HEXITEC_GLB_RD_FEATURES, HEXITEC_NUM_FEATURE_REGS, features);
@@ -116,10 +116,10 @@ void XDmaHexitec::initDMA()
 		{
 			addr = HEXITEC_FEATURE_SCB_SCI_START(i,features[HEXITEC_FEATURE_REG_SCB])*hbmBytesPerPort;
 			scBytes =  HEXITEC_FEATURE_SCB_SCI_NUM(i,features[HEXITEC_FEATURE_REG_SCB])*hbmBytesPerPort;
-			numDesc = scBytes/(scFrameSizeBytes+sizeof (AXIDMADesc));
-			printf("Scope Mode %d : Maximum number of descriptors/frames=%d\n", i, numDesc);
+			numDesc = scBytes/(scFrameSizeBytesAligned+sizeof (AXIDMADesc));
+			printf("Scope Mode %d : Addr=0x%08lX, Numbytes=%08lX: Size=0X%08X, Aligned size=0x%08X, Maximum number of descriptors/frames=%d\n", i, addr, scBytes, scFrameSizeBytes, scFrameSizeBytesAligned, numDesc);
 			m_dmaStream[HEXITEC_DMA_SC0+i].numDesc	= numDesc;
-			m_dmaStream[HEXITEC_DMA_SC0+i].maxBlockBytes = scFrameSizeBytes;	
+			m_dmaStream[HEXITEC_DMA_SC0+i].maxBlockBytes = scFrameSizeBytesAligned;	
 			m_dmaStream[HEXITEC_DMA_SC0+i].descPhys = addr;
 			m_dmaStream[HEXITEC_DMA_SC0+i].dataStart = addr + sizeof(AXIDMADesc) * numDesc;
 			m_dmaStream[HEXITEC_DMA_SC0+i].dataSize = scBytes-sizeof(AXIDMADesc) * numDesc;
@@ -132,6 +132,81 @@ void XDmaHexitec::initDMA()
 			m_dmaStream[i].virtBase = m_xdma->m_regsBAR.m_base+m_dmaStream[i].baseAddr/sizeof(uint32_t);
 	}
 }
+
+void XDmaHexitec::setScopeMemory(enum HexitecScopeMemlayout layout)
+{
+	uint64_t scBytes;
+	uint64_t addr;
+	uint64_t hbmBytesPerPort;
+	uint32_t scFrameSizeBytes = HEXITEC_SC_BYTES_QUARTER_FRAME;		// 80 rows * 2 chunks per row * 128 bits for each DMA
+	int scopePerPB=1;
+	int numDesc;
+	uint32_t scFrameSizeBytesAligned = (scFrameSizeBytes+63) & 0xFFFFFFC0;	// Inherenntly only 128 bit (16 bytes) aligned, needs to be 32 byte aligned for DMA and 64 byte aligned to intermingle with AXIDesc
+	
+	hbmBytesPerPort = m_hbmHist.m_histConf.TotalMemWords*(m_hbmHist.m_histConf.NBitsDataHist/8);
+	if (m_numScopeDma == 0)
+		return;
+	switch(layout)
+	{
+	case HexitecScopeMemDefault:
+		for(int i=0; i<m_numScopeDma; i++)
+		{
+			addr = HEXITEC_FEATURE_SCB_SCI_START(i,m_features[HEXITEC_FEATURE_REG_SCB])*hbmBytesPerPort;
+			scBytes =  HEXITEC_FEATURE_SCB_SCI_NUM(i,m_features[HEXITEC_FEATURE_REG_SCB])*hbmBytesPerPort;
+			numDesc = scBytes/(scFrameSizeBytesAligned+sizeof (AXIDMADesc));
+			printf("Scope Mode %d : Default layout: Maximum number of descriptors/frames=%d\n", i, numDesc);
+			m_dmaStream[HEXITEC_DMA_SC0+i].numDesc	= numDesc;
+			m_dmaStream[HEXITEC_DMA_SC0+i].maxBlockBytes = scFrameSizeBytesAligned;	
+			m_dmaStream[HEXITEC_DMA_SC0+i].descPhys = addr;
+			m_dmaStream[HEXITEC_DMA_SC0+i].dataStart = addr + sizeof(AXIDMADesc) * numDesc;
+			m_dmaStream[HEXITEC_DMA_SC0+i].dataSize = scBytes-sizeof(AXIDMADesc) * numDesc;
+			m_dmaStream[HEXITEC_DMA_SC0+i].state = HEXITEC_DMA_STATE_DESC_CONF | HEXITEC_DMA_STATE_BUFFER_CONF;
+		}
+		break;
+	case HexitecScopeMemUsePB:
+		scopePerPB = m_numScopeDma/m_numPbDma;
+		for (int i=0; i<m_numPbDma; i++)
+		{
+			addr = HEXITEC_FEATURE_PBB_PBI_START(i,m_features[HEXITEC_FEATURE_REG_PBB])*hbmBytesPerPort;
+			scBytes =  HEXITEC_FEATURE_PBB_PBI_NUM(i,m_features[HEXITEC_FEATURE_REG_PBB])*hbmBytesPerPort;
+			scBytes /= scopePerPB;
+			numDesc = scBytes/(scFrameSizeBytesAligned+sizeof (AXIDMADesc));
+			printf("Scope Mode %d : Using PB memory for scope: Maximum number of descriptors/frames=%d\n", i, numDesc);
+			
+			for (int j=0; j<scopePerPB; j++)
+			{
+				int scope = i*scopePerPB+j;
+				m_dmaStream[HEXITEC_DMA_SC0+scope].numDesc	= numDesc;
+				m_dmaStream[HEXITEC_DMA_SC0+scope].maxBlockBytes = scFrameSizeBytesAligned;	
+				m_dmaStream[HEXITEC_DMA_SC0+scope].descPhys = addr;
+				m_dmaStream[HEXITEC_DMA_SC0+scope].dataStart = addr + sizeof(AXIDMADesc) * numDesc;
+				m_dmaStream[HEXITEC_DMA_SC0+scope].dataSize = scBytes-sizeof(AXIDMADesc) * numDesc;
+				m_dmaStream[HEXITEC_DMA_SC0+scope].state = HEXITEC_DMA_STATE_DESC_CONF | HEXITEC_DMA_STATE_BUFFER_CONF;
+				addr += scBytes;
+			}
+		}
+		break;
+
+	case HexitecScopeMemAll:
+		addr = 0 ;
+		scBytes =  HBM_TOTAL_PORTS*hbmBytesPerPort;
+		scBytes /= m_numScopeDma;
+		numDesc = scBytes/(scFrameSizeBytesAligned+sizeof (AXIDMADesc));
+		printf("Scope Mode : Using All memory for scope: Maximum number of descriptors/frames=%d\n", numDesc);
+		for(int i=0; i<m_numScopeDma; i++)
+		{
+			m_dmaStream[HEXITEC_DMA_SC0+i].numDesc	= numDesc;
+			m_dmaStream[HEXITEC_DMA_SC0+i].maxBlockBytes = scFrameSizeBytesAligned;	
+			m_dmaStream[HEXITEC_DMA_SC0+i].descPhys = addr;
+			m_dmaStream[HEXITEC_DMA_SC0+i].dataStart = addr + sizeof(AXIDMADesc) * numDesc;
+			m_dmaStream[HEXITEC_DMA_SC0+i].dataSize = scBytes-sizeof(AXIDMADesc) * numDesc;
+			m_dmaStream[HEXITEC_DMA_SC0+i].state = HEXITEC_DMA_STATE_DESC_CONF | HEXITEC_DMA_STATE_BUFFER_CONF;
+			addr += scBytes;
+		}
+		break;
+	}	
+}
+
 /**
 	Write to hexitec per chip control registers
 
@@ -153,13 +228,17 @@ int XDmaHexitec::getMaxPbFrames()
 	else
 		return m_dmaStream[HEXITEC_DMA_PB0].numDesc*m_numPbDma;
 }
+int XDmaHexitec::getMaxScopeFrames()
+{
+	if (m_generation == HexitecGenMHz)
+		return m_dmaStream[HEXITEC_DMA_SC0].numDesc;
+	else
+		return m_dmaStream[HEXITEC_DMA_SC0].numDesc*m_numScopeDma;
+}
+
 uint32_t XDmaHexitec::getPbFrameBytesAligned()
 {
 	return m_dmaStream[HEXITEC_DMA_PB0].maxBlockBytes;
-}
-int XDmaHexitec::getMaxScopeFrames()
-{
-	return m_dmaStream[HEXITEC_DMA_SC0].numDesc;
 }
 
 void XDmaHexitec::dmaBuildPBDesc(int numFramesTotal)
@@ -195,6 +274,47 @@ void XDmaHexitec::dmaBuildPBDesc(int numFramesTotal)
 		}
 	}
 }
+
+void XDmaHexitec::dmaBuildScopeDesc(int numFramesTotal)
+{
+	int i;
+	int numFrames;
+	uint32_t stopMask;
+	if (numFramesTotal == 0)
+		numFramesTotal = getMaxScopeFrames();
+
+	stopMask = 1<<HEXITEC_DMA_SC0 | 1<<HEXITEC_DMA_SC1;
+	if (m_numScopeDma == 4)
+		stopMask |= 1<<HEXITEC_DMA_SC2 | 1<<HEXITEC_DMA_SC3;
+		
+	dmaStop(stopMask);
+
+	if (m_generation == HexitecGenMHz)
+	{
+		// For Hexitec MHz scope mode is spread between all 4 scope mode DMA
+		numFrames = numFramesTotal;
+		for (i=0; i<m_numScopeDma; i++)
+		{
+			dmaBuildDesc(HEXITEC_DMA_SC0+i, HEXITEC_DMA_SC0+i, 0, 0L, numFrames*(uint64_t)m_dmaStream[HEXITEC_DMA_SC0+i].maxBlockBytes, 0);
+		}
+	}
+	else
+	{
+		printf("dmaScopePBDesc:Not coded yet for hexitec original\n");
+		exit(1);
+		// For Hexitec original, frames toggle between the 2 DMAs, each one provides a complete frame 
+		// e.g 3 frames, send 2  (3+2-1)/2 = 2 frames from PB0 and then 3-2 = 1 frames from PB1.
+		numFrames = (numFramesTotal+m_numPbDma-1)/m_numPbDma;
+		for (i=0; i<m_numPbDma; i++)
+		{
+			if (i == m_numPbDma-1)
+				numFrames = numFramesTotal;
+			dmaBuildDesc(HEXITEC_DMA_PB0+i, HEXITEC_DMA_PB0+i, 0, 0L, numFrames*(uint64_t)m_dmaStream[HEXITEC_DMA_PB0+i].maxBlockBytes, 0);
+			numFramesTotal -= numFrames; 
+		}
+	}
+}
+
 
 void XDmaHexitec::writeDmaBuff(int stream, uint64_t offset, uint64_t numBytes, char * ptr)
 {
@@ -1557,3 +1677,228 @@ uint32_t * zynqmp_dma_buffer_ptr(DevStatics *dev_stat, int stream, uint64_t byte
 	return NULL;
 }
 #endif
+
+void XDmaHexitec::armScopeMode(enum HexitecScopeMemlayout memLayout, int numFrames, bool waitCountEnb)
+{
+	uint32_t scopeGlobSrc=0;
+	uint32_t scopeMask=0;
+
+	scopeGlobSrc = HEXITEC_SCOPE_GLOB_SRC_SET(HEXITEC_SCOPE_GLOB_SRC_INPUT);
+	if (waitCountEnb)
+		scopeGlobSrc |= HEXITEC_SCOPE_GLOB_SRC_WAIT_COUNT_ENB;
+	setGlobReg(HEXITEC_GLB_SCOPE_GLOB_SRC, scopeGlobSrc);
+
+
+	setScopeMemory(memLayout);
+	if (numFrames == 0)
+		numFrames = getMaxScopeFrames();
+	else if (numFrames > getMaxScopeFrames())
+		throw  XDmaHexitecException("armScopeMode: Requested number of scope frames %d does not fit in memory %d", numFrames, getMaxScopeFrames());
+	dmaBuildScopeDesc(numFrames);
+	setGlobReg(HEXITEC_GLB_SCOPE_NUM_WORDS, numFrames*(HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW/HEXITEC_MHZ_SCOPE_WORDS_PER_CHUNK+HEXITEC_SC_HEADER_BEATS));
+	for (int i=0; i<m_numScopeDma; i++)
+		scopeMask |= 1 << HEXITEC_DMA_SC0+i;
+	dmaStart(scopeMask, 0, 0, 0); 
+}
+void XDmaHexitec::dmaScopeWaitIdle(double timeOut)
+{
+	uint32_t scopeMask=0;
+	for (int i=0; i<m_numScopeDma; i++)
+		scopeMask |= 1 << HEXITEC_DMA_SC0+i;
+	dmaWaitIdle(scopeMask, timeOut);
+}
+
+
+void XDmaHexitec::readDmaDesc(int stream, int first, int num, XDmaHexitec::AXIDMADesc *descBuff)
+{
+	if (stream < 0 || stream >= HEXITEC_NUM_AXI_DMA)
+		throw  XDmaHexitecException("readDmaDesc: requires stream in range 0 to %d, not %d", HEXITEC_NUM_AXI_DMA-1, stream);
+
+	if ((m_dmaStream[stream].state & HEXITEC_DMA_STATE_DESC_CONF) == 0)
+		throw  XDmaHexitecException("readDmaDesc: Stream %d is not Configured", stream);
+	if (first < 0 || num < 1 || first+num > m_dmaStream[stream].definedDesc)
+		throw  XDmaHexitecException("readDmaDesc: stream=%d, first=%d  + num=%d does not fit within defiendDesc=%d", stream, first, num, m_dmaStream[stream].definedDesc);
+	m_xdma->readDma((char *)descBuff, m_dmaStream[stream].descPhys+first*sizeof(AXIDMADesc), num*sizeof(AXIDMADesc), m_dmaDescRWChan);
+}
+
+/**
+	Read data from scope mode buffers and interleave into a buffer as necessary for Hexitech MHz.
+
+	For HexitecMHz the buffer will arranges as 161 x 512 bit (64 bytes) words per frame. 
+@param firstFrame	First readout frame number to read.
+@param numFrames	Number of readout frames to read.
+@param outputBuffer		Buffer to store assembled data.
+*/
+#define READ_CHUNK_FRAMES 400
+
+void XDmaHexitec::readScopeDataMHz(int firstFrame, int numFrames, void *outputBuffer)
+{
+	uint32_t inputFrameSize = (HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW+HEXITEC_SC_HEADER_BEATS)*HEXITEC_SC_BYTES_PER_QUARTER_LINE;
+	uint32_t inputFrameSizeAligned = (inputFrameSize+63) & 0xFFFFFFC0;	// Inherently only 128 bit (16 bytes) aligned, needs to be 32 byte aligned for DMA and 64 byte aligned to intermingle with AXIDesc
+	uint32_t outputFrameSize = (HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW+HEXITEC_SC_HEADER_BEATS)*HEXITEC_SC_BYTES_PER_BEAT;
+	int frame, chunkNumFrames, remaining;
+	int maxReadChunkFrames = 200 ; //READ_CHUNK_FRAMES;
+	int errors=0;
+	
+	if (numFrames < maxReadChunkFrames)
+		maxReadChunkFrames = numFrames;
+	
+	std::unique_ptr<uint64_t[]> buffer { new uint64_t[maxReadChunkFrames*inputFrameSizeAligned/sizeof(uint64_t)]};
+	std::unique_ptr<XDmaHexitec::AXIDMADesc []> descBuff { new AXIDMADesc[maxReadChunkFrames]};
+	
+	memset(outputBuffer, 0xFF, static_cast<uint64_t>(numFrames)*outputFrameSize);
+
+	remaining = numFrames;
+	frame = firstFrame;
+	while (remaining > 0)
+	{
+		chunkNumFrames = remaining;
+		if (chunkNumFrames > maxReadChunkFrames)
+			chunkNumFrames = maxReadChunkFrames;
+		for (int scope=0; scope <m_numScopeDma; scope++)
+		{
+			readDmaBuff(HEXITEC_DMA_SC0+scope, frame*inputFrameSizeAligned, chunkNumFrames*inputFrameSizeAligned, reinterpret_cast<char *>(buffer.get()));
+			readDmaDesc(HEXITEC_DMA_SC0+scope, frame, chunkNumFrames, descBuff.get());
+			for (int f=0; f<chunkNumFrames; f++)
+			{
+				int numFullBeats = HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW+HEXITEC_SC_HEADER_BEATS; // Working in 128 bit beats (1/4 of a full 512 bit beat per DMA)
+
+				if ((descBuff[f].status & 0x7fffff)/16 < numFullBeats)
+				{
+					errors++;
+					if (errors < 10)
+						printf("Short frame at stream=%d, frame=%d, Requested=0x%08X, read=%08X, numFullBeats=%d\n", HEXITEC_DMA_SC0+scope, frame+f, descBuff[f].control, descBuff[f].status,  numFullBeats);
+					numFullBeats = (descBuff[f].status & 0x7fffff)/16;
+				}
+
+				uint64_t *src = buffer.get()+f*inputFrameSizeAligned/sizeof(uint64_t);
+				uint64_t *dest = reinterpret_cast<uint64_t *>(reinterpret_cast<uint8_t *>(outputBuffer) + (frame-firstFrame+f)*outputFrameSize + scope*HEXITEC_SC_BYTES_PER_QUARTER_LINE);
+
+				for (int j=0; j<numFullBeats; j++)
+				{
+					dest[0] = *src++;
+					dest[1] = *src++;
+					dest += 8;	// Increment 512 bits = 8 * 64 bit
+				}
+
+			}
+		}
+		frame += chunkNumFrames;
+		remaining -= chunkNumFrames;
+	}
+}
+
+void XDmaHexitec::readAndHistScope(int numFrames, int absHighThres, int absLowThres, int posThres, uint32_t *rawHist1d, uint32_t *rawHist2d, uint32_t *bsubHist1d, uint32_t *bsubHist2d, uint32_t *bsubHist3d, int maxErrors, int &errors, bool noClear)
+{
+	int remaining;
+	int frame=0;
+	int maxReadChunkFrames = READ_CHUNK_FRAMES;
+	int64_t prevExtTF=-1;
+	bool prevCountEnb=false;
+	if (numFrames == 0)
+		numFrames = getMaxScopeFrames();
+	else if (numFrames > getMaxScopeFrames())
+		throw  XDmaHexitecException("readAndHistScopeMHz: Requested number of scope frames %d does not fit in memory %d", numFrames, getMaxScopeFrames());
+
+	if (numFrames < READ_CHUNK_FRAMES)
+		maxReadChunkFrames = numFrames;
+	std::unique_ptr<uint8_t []> frameBuffer {new uint8_t[maxReadChunkFrames*HEXITEC_MHZ_SCOPE_FRAME_SIZE_BYTES]};
+	if (!noClear)
+	{
+		if (rawHist1d != nullptr)
+			memset(rawHist1d, 0, sizeof(int)*4096);
+		if (rawHist2d != nullptr)
+			memset(rawHist2d, 0, sizeof(int)*HEXITEC_NUM_ROWS*HEXITEC_NUM_COLS);
+	}
+
+	remaining = numFrames;
+	
+	while (remaining > 0)
+	{
+		int chunkNumFrames = maxReadChunkFrames;
+		if (chunkNumFrames > remaining)
+			chunkNumFrames = remaining;
+		readScopeDataMHz(frame, chunkNumFrames, frameBuffer.get());
+		histScopeDataMHz(frame, chunkNumFrames, absHighThres, absLowThres, posThres, frameBuffer.get(), rawHist1d, rawHist2d, bsubHist1d, bsubHist2d, bsubHist3d, maxErrors, errors, prevExtTF, prevCountEnb);
+		remaining -= chunkNumFrames;
+		frame += chunkNumFrames;
+	}
+}
+
+void XDmaHexitec::histScopeDataMHz(int frame, int numFrames, int absHighThres, int absLowThres, int posThres, uint8_t *frameBuffer,  
+	uint32_t *rawHist1d, uint32_t *rawHist2d, uint32_t *bsubHist1d, uint32_t *bsubHist2d, uint32_t *bsubHist3d, int maxErrors, int &errors, int64_t & prevExtTF, bool &prevCountEnb)
+{
+	for (int f=0; f<numFrames; f++)
+	{
+		uint64_t *p64 = reinterpret_cast<uint64_t *>(frameBuffer+f*HEXITEC_MHZ_SCOPE_FRAME_SIZE_BYTES);
+		bool headerError = false;
+		if ( (p64[7] & HEXITEC_MHZ_UDP_SOF) == 0)
+		{
+			headerError = true;
+			errors++;
+			if (errors < maxErrors)
+				printf("Frame = %d: Missing SOF: Flags=0x%016lX\n", frame+f, p64[7]);
+			else if (errors == maxErrors)
+				printf("Too many errors, counting\n");
+		}
+		uint64_t detFrame = HEXITEC_MHZ_UDP0_DET_FRAME(p64[0]);
+		uint64_t timeFrame = HEXITEC_MHZ_UDP01_TIMEFRAME(p64[0],p64[1]);
+		bool countEnb = !(p64[7] & HEXITEC_MHZ_UDP7_COUNT_DIS);
+		if (timeFrame != prevExtTF || countEnb != prevCountEnb)
+		{
+			printf("Detframe %ld : TF=%ld, Enb=%d\n", detFrame, timeFrame, countEnb);
+			prevExtTF = timeFrame;
+			prevCountEnb = countEnb;
+		}
+		if (frame+f == 0)
+			m_scopeHistFrame = detFrame;
+		else if (detFrame != m_scopeHistFrame)
+		{
+			headerError = true;
+			errors++;
+			if (errors < maxErrors)
+				printf("Frame %d: detector frame mismatch. expected=%ld, actual=%ld\n", frame+f, m_scopeHistFrame, detFrame);
+			else if (errors == maxErrors)
+				printf("Too many errors, counting\n");
+		}
+		if (headerError && errors < maxErrors)
+		{
+			printf("Header:");
+			for (int j=0; j<8; j++)
+				printf(" %016lX", p64[j]);
+			printf("\n");
+		}
+		p64 += 8;
+		for (int i=0; i<HEXITEC_NUM_ROWS*HEXITEC_MHZ_NUM_CHUNKS_PER_ROW; i++)
+		{
+			if (p64[7] & 0xFFFFFFFF00000000L)
+			{
+				errors++;
+				if (errors < maxErrors)
+					printf("Frame %d: Rowcol=%d: Unexpected non-zero data in bits 511:480 0x%016lX\n", frame+f, i, p64[7]);
+				else if (errors == maxErrors)
+					printf("Too many errors, counting\n");
+			}
+			uint8_t *p = reinterpret_cast<uint8_t *>(p64);
+			for (int col=0; col<40; col++)
+			{
+				int adcValue;
+				if (col & 1)
+				{
+					adcValue = (p[1] & 0xF0) >> 4 |  p[2] << 4;
+					p += 3;
+				}
+				else
+					adcValue = p[0] | (p[1] & 0xF) << 8;
+				if (rawHist1d != nullptr)
+					rawHist1d[adcValue] ++;
+				if (adcValue > absHighThres && rawHist2d != nullptr)
+					rawHist2d[(i/2)*HEXITEC_NUM_COLS+ (i%2)*(HEXITEC_NUM_COLS/2)+col]++;
+			}
+			p64 += HEXITEC_SC_BYTES_PER_BEAT/sizeof(uint64_t);
+		}
+		m_scopeHistFrame = detFrame+1;
+	}
+}
+		
+
