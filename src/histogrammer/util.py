@@ -92,13 +92,3 @@ def UsesHexitecLibrary(level=logging.DEBUG):
             return val
         return _wrapper
     return dectorator
-
-
-def enumToString(enumVal: Enum) -> str:
-    """Convert the Enum name to human readable text"""
-    return enumVal.name.replace("_", " ").title()
-
-
-def strToEnum(enumStr: str) -> str:
-    """Convert the """
-    return enumStr.replace(" ", "_").upper()

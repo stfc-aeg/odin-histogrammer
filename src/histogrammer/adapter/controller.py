@@ -95,20 +95,19 @@ class HistogramController(BaseController):
 
                 # cluster mode, the cluster patterns used, and the trigger mode for pixels
                 "clustering": {
-                    "mode": (lambda: self.enumToString(self.histogrammer.clusterMode),
+                    "mode": (lambda: self.histogrammer.clusterMode.name,
                              partial(self.setCluster, "clusterMode"),
-                             {"allowed_values": [self.enumToString(val) for val in ClusterMode]}),
+                             {"allowed_values": [val.name for val in ClusterMode]}),
                     "types": {  # dict comprehension to create bool param for each flag option
-                        self.enumToString(enb): (partial(
+                        enb.name: (partial(
                             self.getClusterType, enb),
                             partial(self.setClusterType, enb)
                         ) for enb in ClusterEnable
                     },
-                    "auto_trig_mode": (lambda: self.enumToString(self.histogrammer.autoTrigMode),
+                    "auto_trig_mode": (lambda: self.histogrammer.autoTrigMode.name,
                                        partial(self.setCluster, "autoTrigMode"),
-                                       {"allowed_values": [
-                                           self.enumToString(val) for val in AutoTrigMode
-                                       ]})
+                                       {"allowed_values": [val.name for val in AutoTrigMode]}
+                                       )
 
                 },
                 "charge_sharing": {
@@ -172,14 +171,12 @@ class HistogramController(BaseController):
                     "num_bins": (lambda: self.numBins_allowed[self.histogrammer.numBins],
                                  partial(self.setHistFormat, "numBins"),
                                  {"allowed_values": self.numBins_allowed}),
-                    "run_mode": (lambda: self.enumToString(self.histogrammer.runMode),
+                    "run_mode": (lambda: self.histogrammer.runMode.name,
                                  partial(self.setHistFormat, "runMode"),
-                                 {"allowed_values": [self.enumToString(val) for val in RunMode]}),
-                    "mapped_mode": (lambda: self.enumToString(self.histogrammer.mappedMode),
+                                 {"allowed_values": [val.name for val in RunMode]}),
+                    "mapped_mode": (lambda: self.histogrammer.mappedMode.name,
                                     partial(self.setHistFormat, "mappedMode"),
-                                    {"allowed_values": [
-                                        self.enumToString(val) for val in MappedMode
-                                    ]}),
+                                    {"allowed_values": [val.name for val in MappedMode]}),
                     "bad_pixel_mask": {  # load file to define which pixel output to mask out
                         "filename": (
                             lambda: self.fname_badPixelOut,
@@ -220,13 +217,6 @@ class HistogramController(BaseController):
     def cleanup(self) -> None:
         logging.debug("Shutting down Histogrammer")
         self.histogrammer.disconnect()
-
-    def enumToString(self, enumVal: Enum) -> str:
-        val_name = enumVal._name_
-        return val_name.lower().replace("_", " ")
-
-    def stringToEnum(self, enumStr: str) -> str:
-        return enumStr.upper().replace(" ", "_")
 
     def setValue(self, param: str, value):
         """Set the specified attribute on the Histogrammer object
@@ -284,9 +274,9 @@ class HistogramController(BaseController):
         """
 
         if setting == "clusterMode":
-            val: ClusterMode = ClusterMode[self.stringToEnum(value)]
+            val: ClusterMode = ClusterMode[value]
         else:
-            val: AutoTrigMode = AutoTrigMode[self.stringToEnum(value)]
+            val: AutoTrigMode = AutoTrigMode[value]
         self.setValue(setting, val)
         self.histogrammer.setClusterMode()
 
@@ -299,9 +289,9 @@ class HistogramController(BaseController):
                 index = 0
             val = NumBins(index)
         elif setting == "mappedMode":
-            val = MappedMode[self.stringToEnum(value)]
+            val = MappedMode[value]
         elif setting == "runMode":
-            val = RunMode[self.stringToEnum(value)]
+            val = RunMode[value]
         else:
             raise HistogramException("Hist Format Setting invalid: {}".format(setting))
 
