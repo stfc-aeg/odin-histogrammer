@@ -227,7 +227,7 @@ string XDmaHexitec::decodeHistFormat(int chip)
 
 */
 
-void XDmaHexitec::decodeDataMoverStream(int qid, bool force, string &setup , string & status, bool &running, bool &setupChange, bool & statusChange)
+void XDmaHexitec::decodeDataMoverStream(int qid, bool force, string &setup , string & status, bool &running, bool &setupChange, bool & statusChange, int64_t *tFramePtr)
 {
 	volatile uint32_t *ptr;
 	volatile uint8_t * p8;
@@ -297,4 +297,6 @@ void XDmaHexitec::decodeDataMoverStream(int qid, bool force, string &setup , str
 	m_prevDataMoverState[qid].dm3 = dm3;
 	setup = setupSstr.str();
 	status = statusSstr.str();
+	if (tFramePtr != nullptr)
+		*tFramePtr = tFrame;
 }

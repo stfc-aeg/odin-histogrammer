@@ -116,6 +116,7 @@
 #define HEXITEC_GLB_ITFG_NUM_TF				10		//!< Integrated time frame generator, number of output time frames
 #define HEXITEC_GLB_ITFG_NUM_CYCLES			12		//!< Integrated time frame generator, number of time to cycle over all output time frames
 #define HEXITEC_NUM_TFG_REGS				5
+#define HEXITEC_GLB_SOFTWARE_FLUSH			14		//!< Performing a 64 bit write of the 35 bit time frame triggers a flush. To be used for cyclic experiments without HEXITEC_DATA_PATH_ENB_FLUSH set. 
 #define HEXITEC_GLB_IRQ_ENB_RW				16		//!< Read/write access to the IRQ enable register
 #define HEXITEC_GLB_IRQ_ENB_SET				17		//!< Write 1 to set access to the IRQ enable register
 #define HEXITEC_GLB_IRQ_ENB_CLR				18		//!< Write 1 to clear access to the IRQ enable register
@@ -210,9 +211,10 @@
 
 #define HEXITEC_SEL_ADDR_BROADCAST		63			//!< Write to same BRAM in call processing streams (so all columns) at the same time.
 #define HEXITEC_ENABLED_FRAMES_SIZE		4096		//!< Size of ring buffer used to store enabled Frames in timeframe counter
-#define HEXITEC_ENB_FRMS_GET_FRAME(x)	((x)&0x3FFFFFFFFFFFL)	//!< Get the number of enabled frames (into a uint64_t) from the retuned inp frames uint64_t
-#define HEXITEC_ENB_FRMS_GET_EXT_TRIG_LCH(x)	(((x)>>56)&0xF)	//!< Get the latched version of the ext trigger signal number from the retuned inp frames uint64_t. This is probably the easiest to use.
-#define HEXITEC_ENB_FRMS_GET_EXT_TRIG(x)		(((x)>>60)&0xF)	//!< Get the most recent version of the ext trigger signal number from teh last detector frame of the time frame from the retuned inp frames uint64_t
+#define HEXITEC_ENB_FRMS0_GET_FRAME(x)	((x)&0x7FFFFFFFFFL)	//!< Get the number of enabled frames (into a uint64_t) from the retuned inp frames uint64_t
+#define HEXITEC_ENB_FRMS0_GET_EXT_TRIG_LCH(x)	(((x)>>56)&0xF)	//!< Get the latched version of the ext trigger signal number from the retuned inp frames uint64_t. This is probably the easiest to use.
+#define HEXITEC_ENB_FRMS0_GET_EXT_TRIG(x)		(((x)>>60)&0xF)	//!< Get the most recent version of the ext trigger signal number from teh last detector frame of the time frame from the retuned inp frames uint64_t
+#define HEXITEC_ENB_FRMS1_GET_RAW_HITS(x)	((x)&0xFFFFFFFFFFFFFL)	//!< Get the number of raw hits (into a uint64_t) from the returned inp frames uint64_t
 
 #define HEXITEC_SCOPE_STAT_RUNNING		(1<<31)		//!< Sysytem is running and has not reached the end of a short busrt.
 /*
@@ -250,7 +252,7 @@
 #define HEXITEC_MHZ_UDP_EOP				(0L<<60)		// Note 0 unused at moment.
 
 #define HEXITEC_MHZ_UDP0_DET_FRAME(x)		((x)&0xFFFFFFFFFFFFL)		//!< Get detector frame number from UDP header 64 bit word 0
-#define HEXITEC_MHZ_UDP01_TIMEFRAME(d0,d1)	(((d0)>>48)&0xFFFFL |((d1)<<16)&0x7FFFF0000L)		//!< Get Alpha Data Time frame from UDP header  64 nit words 0 and 1
+#define HEXITEC_MHZ_UDP01_TIMEFRAME(d0,d1)	(((d0)>>48)&0xFFFFL |((d1)<<16)&0x7FFFF0000L)		//!< Get Alpha Data Time frame from UDP header 64 bit words 0 and 1
 
 #define HEXITEC_MHZ_UDP7_COUNT_DIS		(1L<<56)
 #define HEXITEC_MHZ_UDP7_EXTTRIG(val)	((((uint64_t)(val))&0xF)<<48)
@@ -739,6 +741,11 @@
 #define HEXITEC_MAX_FARM_SOCKETS		256			//!< Maximum number sockets in test mode == of entries in Farm mode socket LUT
 #define HEXITEC_UDP_TRAILER_BYTES		64			//!< 512 bit = 64 byte trailer for UDP 100G data TX
 #define HEXITEC_UDP_MAX_FRAME_BYTES		8192		//!< Maximum payload size of frame is 8192 bytes, though can be less
+#define HEXITEC_UDP_TRAILER3_RAW_HITS(x)			((x)&0xFFFFFFFFFFFFFL)		//!< Get 52 bit input frame count from 64 bit word 3 (from bit 256) of UDP trailer
+#define HEXITEC_UDP_TRAILER4_INP_FRAMES(x)			((x)&0x7FFFFFFFFFL)		//!< Get 39 bit input frame count from 64 bit word 4 (from bit 256) of UDP trailer
+#define HEXITEC_UDP_TRAILER4_EXT_TRIG_LCH(x)	(((x)>>56)&0xF)	//!< Get the latched version of the ext trigger signal number from from 64 bit word 4 (from bit 256) of UDP trailer. This is probably the easiest to use.
+#define HEXITEC_UDP_TRAILER4_EXT_TRIG(x)		(((x)>>60)&0xF)	//!< Get the most recent version of the ext trigger signal number from 64 bit word 4 (from bit 256) of UDP trailer.
+
 #define HEXITEC_UDP_TRAILER5_PROCSSED_FRAME(x)		(((x))&0x7FFFFFFFFL)	//!< Get 35 bit current processed time frame number from UDP trailer word 5, which should be ahead of this time frame
 #define HEXITEC_UDP_TRAILER5_OVERRUN(x)		(((x)>>63)&0x1L)		//!< Get Overrun flag from Trailer word 5
 #define HEXITEC_UDP_TRAILER7_PACKET(x)		((x)&0x3FFFFF)		//!< Get packet number from UDP trailer 64 bit word 7 (last 64 bits)
@@ -802,7 +809,7 @@
 
 #define HEXITEC_EVLIST_T_GET_RAW(x)		(((x))&0x3FFFFFFF)	//!< Get Raw hit count from the trailer.
 
-#define HEXITEC_EVLIST_D1_GET_RAWPOSN(x)	(((x))&0x1FFF)		//!< Get Raw psoition from data offset 1
+#define HEXITEC_EVLIST_D1_GET_RAWPOSN(x)	(((x))&0x1FFF)		//!< Get Raw position from data offset 1
 #define HEXITEC_EVLIST_D1_GET_CTYPE(x)		(((x)>>16)&0x3F)		//!< Get 6 but cluster type from data offset 1
 
 #define HEXITEC_EVLIST_D2_GET_PIX00(x)		(((x))&0x1FFF)		//!< Get signed 13 bits of baseline subtracted pixel ADC value from data offset 2
@@ -909,6 +916,15 @@ enum HexitecSaveRestore
 };
 using namespace std;
 
+struct HexitecTimeFrameInfo
+{
+	uint64_t enabledFrames;
+	uint64_t rawHits;
+	int extTrigLast, extTrigLatched;
+	inline bool operator==(const HexitecTimeFrameInfo& r) {return enabledFrames == r.enabledFrames && rawHits == r.rawHits && extTrigLast == r.extTrigLast && extTrigLatched == r.extTrigLatched;}
+//	inline bool operator==(const HexitecTimeFrameInfo& r) {return enabledFrames == r.enabledFrames && extTrigLast == r.extTrigLast && extTrigLatched == r.extTrigLatched;}
+	inline bool operator!=(const HexitecTimeFrameInfo& r) {return ! (*this==r); }
+};
 
 
 class XDmaHexitecException : public exception
@@ -1047,6 +1063,7 @@ public :
 	void writeGlobRegs(int offset, int num, uint32_t *data);
 	void readGlobRegs(int offset, int num, uint32_t *data);
 	void setGlobReg(int offset, uint32_t value);
+	void setGlobReg64(int offset, uint64_t value);
 	uint32_t getGlobReg(int offset);
 	uint64_t getGlobReg64(int offset);
 	void setPixelLUT(int chip, int region, int firstCol, int numCol, int firstRow, int numRow, uint32_t value);
@@ -1105,6 +1122,7 @@ public :
 	void setLinearityOne(int chip, double offsetADUs=0.0);
 	void setClusterMode(int chip, int clusterMode, int autoTrigRate=0);
 	void setCShareMode(int chip, bool enbEdgePos, bool enbNegNeb, bool enbLPos, bool disSum, bool disAdjPosn);
+	void getClusterMode(int chip, int *clusterMode, int *autoTrigRate);
 	void setClusterTypes(int chip, int enbClusterType);
 	void setHistFormat(int chip, int histFormat, int mappedMode, int histShift=0);
 	void getHistFormat(int chip, int *histFormatP, int *mappedModeP, int *histShiftP=nullptr);
@@ -1154,7 +1172,7 @@ public :
 	void udpTxTestCreateSockets(uint32_t *accelIpAddrP, uint32_t *serverIpAddrP, int accelPort, int serverPort, int numSockets, bool sameIpAddr=true);
 	void udpTxSetup(uint32_t *accelIpAddrP, uint32_t *serverIpAddrP, int accelPort, int serverPort, int farmBase, int farmNum, bool enbFarmMode, uint16_t interFrameGap, bool useArp);
 	int getUdpTxTestSocket(int index);
-	int udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, size_t payloadBytes, int debugTag=0, bool discardStale=false, int64_t *dataMoverOverRunPtr=nullptr);
+	int udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, size_t payloadBytes, int debugTag=0, bool discardStale=false, int64_t *dataMoverOverRunPtr=nullptr, HexitecTimeFrameInfo *tfInfo=nullptr);
 	string udpShowRxStatus(bool onlyOnError);
 
 	void iTfgDisable();
@@ -1253,8 +1271,9 @@ public :
 	string decodeClusterGrade(uint32_t clusterGrade);
 	void iTfgGetSetup(HexitecITfgMode &mode, int &extTrigSrc, bool &invertExtTrig, uint32_t &inpFramesPerTF, uint64_t &numTF, uint32_t &numCycles);
 	const char *getITfgStatusName(uint32_t status);
-	void decodeDataMoverStream(int qid, bool force, string &setup , string & status, bool &running, bool &setupChange, bool & statusChange);
-	void readEnabledFrames(int chip, int64_t firstTF, int numTF, uint64_t *data);
+	void decodeDataMoverStream(int qid, bool force, string &setup , string & status, bool &running, bool &setupChange, bool & statusChange, int64_t *tFramePtr=nullptr);
+	void readTimeFrameInfo(int chip, int64_t firstTF, int numTF, HexitecTimeFrameInfo *data);
+	void softwareFlush(uint64_t lastFrame);
 
 private:
 	void initDMA();
@@ -1298,7 +1317,7 @@ private:
 	void hdf5AddIntAttribute(H5::DataSet &ds, const char * rootName, int chip, int value);
 	void hdf5AddStringAttribute(H5::DataSet &ds, const char * rootName, int chip, const char * cStr);
 	void hdf5AddStringAttribute(H5::DataSet &ds, const char * rootName, int chip, std::string str);
-
+	inline void readOneFrameInfo(volatile uint64_t *p64, HexitecTimeFrameInfo *data);
 //! [AXI_DMA_STREAM]
 	struct DMAStream
 	{
