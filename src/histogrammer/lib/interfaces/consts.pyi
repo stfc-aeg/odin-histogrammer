@@ -24,5 +24,10 @@ def GET_THRES_POS(x: int) -> int:
 
 DATA_PATH_ENB_FLUSH: Final[int]
 DATA_PATH_SHORT_BURST_MODE: Final[int]
+"""
+Enable (short) burst mode where only the number of frames specified by
+GLB_FRAME_BURST_LENGTH are processed. Used to set the Baseline when starting
+a new Acquisition
+"""
 ETHERNET_PM_TICK_REG: Final[int]
 DM0_AUTO_TF: Final[int]

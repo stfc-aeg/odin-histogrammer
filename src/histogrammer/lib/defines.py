@@ -23,82 +23,82 @@ class UdpRxConnection(IntEnum):
 class Region(IntEnum):
     """Defined Region Values """
 
-    REGION_REGS           = 0
-    REGION_ABS_THRES      = 1
-    REGION_BASELINE       = 2
-    REGION_MTHRES         = 3
-    REGION_LTHRES         = 4
-    REGION_LIN_A          = 5
-    REGION_LIN_B          = 6
-    REGION_LIN_C          = 7
-    REGION_EDGE_POS_RECIP = 8
-    REGION_EDGE_POS_M     = 9
-    REGION_EDGE_POS_C     = 10
-    REGION_NEG_NEB_RECIP  = 11
-    REGION_NEG_NEB_M      = 12
-    REGION_NEG_NEB_C      = 13
-    REGION_ENG_MAP        = 14
-    REGION_PIX_MASK       = 15
-    REGION_L_POS_RECIP    = 16
-    REGION_L_POS_M        = 17
-    REGION_L_POS_C        = 18
-    REGION_FIFO_COUNTS    = 31
+    REGS           = 0
+    ABS_THRES      = 1
+    BASELINE       = 2
+    MTHRES         = 3
+    LTHRES         = 4
+    LIN_A          = 5
+    LIN_B          = 6
+    LIN_C          = 7
+    EDGE_POS_RECIP = 8
+    EDGE_POS_M     = 9
+    EDGE_POS_C     = 10
+    NEG_NEB_RECIP  = 11
+    NEG_NEB_M      = 12
+    NEG_NEB_C      = 13
+    ENG_MAP        = 14
+    PIX_MASK       = 15
+    L_POS_RECIP    = 16
+    L_POS_M        = 17
+    L_POS_C        = 18
+    FIFO_COUNTS    = 31
 
 
 class GlobalRegisters(IntEnum):
     """Defined Global Register Offsets"""
 
-    GLB_DATA_PATH = 0
-    GLB_RUN_REG = 1
-    GLB_SCOPE_NUM_WORDS = 2
-    GLB_SCOPE_GLOB_SRC = 3
-    GLB_SCOPE_CHIP_SEL = 4
-    GLB_FRAME_BURST_LENGTH = 5
+    DATA_PATH = 0
+    RUN_REG = 1
+    SCOPE_NUM_WORDS = 2
+    SCOPE_GLOB_SRC = 3
+    SCOPE_CHIP_SEL = 4
+    FRAME_BURST_LENGTH = 5
     """Frame burst length register used to process a limited number of frames, generally to monitor baseline tracking."""
 
-    GLB_ITFG_CONTROL = 8
+    ITFG_CONTROL = 8
     """Integrated time frame generator control register."""
 
-    GLB_ITFG_INP_PER_TF = 9
+    ITFG_INP_PER_TF = 9
     """Integrated time frame input detector frames per output time frame."""
 
-    GLB_ITFG_NUM_TF = 10
+    ITFG_NUM_TF = 10
     """Integrated time frame generator, number of output time frames"""
 
-    GLB_ITFG_NUM_CYCLES = 12
+    ITFG_NUM_CYCLES = 12
     """Integrated time frame generator, number of time to cycle over all output time frames"""
 
-    GLB_IRQ_ENB_RW = 16
+    IRQ_ENB_RW = 16
     """Read/write access to the IRQ enable register"""
 
-    GLB_IRQ_ENB_SET = 17
+    IRQ_ENB_SET = 17
     """Write 1 to set access to the IRQ enable register"""
 
-    GLB_IRQ_ENB_CLR = 18
+    IRQ_ENB_CLR = 18
     """Write 1 to clear access to the IRQ enable register"""
 
-    GLB_FRAME_COUNT0 = 0x130
+    FRAME_COUNT0 = 0x130
     """Hexitec MHz Frame Count (Chip 0)"""
 
-    GLB_RAW_HIT_COUNT0 = 0x131
+    RAW_HIT_COUNT0 = 0x131
     """Hexitec MHz Raw Hit Count (Chip 0)"""
 
-    GLB_LOADING_BL = 0x10C
+    LOADING_BL = 0x10C
     """Bitwise mask of chip=0..NumChips-1 of Loading Baseline status bit"""
 
-    GLB_SAVING_BL = 0x10E
+    SAVING_BL = 0x10E
     """Bitwise mask of chip=0..NumChips-1 of Saving Baseline status bit"""
 
-    GLB_RD_ITFG_STATUS = 0x116
+    RD_ITFG_STATUS = 0x116
     """Word offset of Integrated time frame generator status register"""
 
-    GLB_RD_ITFG_INP_FRAME = 0x117
+    RD_ITFG_INP_FRAME = 0x117
     """Monitor Count DOWN of specified number of detector frames to accumulate into current output frame"""
 
-    GLB_RD_ITFG_TIME_FRAME = 0x118
+    RD_ITFG_TIME_FRAME = 0x118
     """Monitor Count UP of current output time frame."""
 
-    GLB_RD_ITFG_CYCLES = 0x119
+    RD_ITFG_CYCLES = 0x119
     """Monitor Count UP of current output time frame."""
 
 
@@ -111,12 +111,14 @@ class ChipRegisters(IntEnum):
     FORMAT = 5
     CLUSTER_GRADE = 6
 
+
 class BaselineChipVals(IntFlag):
-    LOAD = (1<<8)
+    LOAD = (1 << 8)
     """Trigger transfer of (fixed) baseline values from Read/write table to active baseline table. Needs data to be running to complete"""
-    
-    SAVE = (1<<9)
+
+    SAVE = (1 << 9)
     """Trigger transfer of baseline values from active baseline value to Read/write table. Needs data to be running to complete"""
+
 
 class BaselineMask(IntEnum):
     """Macros to describe control of how the baseline estimate is updated"""
@@ -155,33 +157,33 @@ class BaselineMask(IntEnum):
 class BaselineDivide(IntEnum):
     """Macros to describe control of how the baseline error is scaled to update baseline estimate."""
 
-    BSUB_DIVIDE256 = 0  # divide error feedback by 256, shift 8
-    BSUB_DIVIDE512 = 1
-    BSUB_DIVIDE1024 = 2
-    BSUB_DIVIDE2048 = 3
-    BSUB_DIVIDE4096 = 4
-    BSUB_DIVIDE8192 = 5
-    BSUB_DIVIDE16384 = 6
-    BSUB_DIVIDE32768 = 7
-    BSUB_DIVIDE65536 = 8
+    DIVIDE256 = 0  # divide error feedback by 256, shift 8
+    DIVIDE512 = 1
+    DIVIDE1024 = 2
+    DIVIDE2048 = 3
+    DIVIDE4096 = 4
+    DIVIDE8192 = 5
+    DIVIDE16384 = 6
+    DIVIDE32768 = 7
+    DIVIDE65536 = 8
 
 
 class ClusterMode(IntEnum):
     """Macros to describe how/which clusters of hist are chosen."""
 
-    INDEPENDANT       = 0
+    INDEPENDANT = 0
     """Each pixel trigger independently, Charge sharing correction is bypassed"""
 
-    LONE_POSITIVE    = 1
+    LONE_POSITIVE = 1
     """Trigger only on lone positive trigger, with no nearest neighbours"""
 
     LONE_POSITIVE_OR_NEGATIVE = 2
     """Trigger only on lone positive or negative trigger, with no nearest neighbours"""
 
-    POSITIVE         = 3
+    POSITIVE = 3
     """Trigger on all recognised types of clusters with 1 to 4 positive main triggers"""
 
-    POSITIVE_OR_NEGATIVE      = 4
+    POSITIVE_OR_NEGATIVE = 4
     """Trigger on all recognised types of clusters with at least 1 positive trigger with positive or negative neighbours"""
 
     POSITIVE_OR_NEGATIVE_LOWER = 5
@@ -190,23 +192,23 @@ class ClusterMode(IntEnum):
     AUTO_OR_POSITIVE = 6
     """Pseduo randomly trigger to allow histogram of noise but also trigger using normal Positive event trigger to see events."""
 
-    AUTO        = 7
+    AUTO = 7
     """Pseduo randomly trigger to allow histogram of noise"""
 
 
 class AutoTrigMode(IntEnum):
     """Auto triggering modes for Cluster Mode"""
 
-    AUTOTRIG_1IN16 = 0
+    ONEIN16 = 0
     """Auto trigger mode triggers each pixel 1 frame in 16"""
 
-    AUTOTRIG_1IN8 = 1
+    ONEIN8 = 1
     """Auto trigger mode triggers each pixel 1 frame in 8"""
 
-    AUTOTRIG_1IN4 = 2
+    ONEIN4 = 2
     """Auto trigger mode triggers each pixel 1 frame in 4"""
 
-    AUTOTRIG_1IN2 = 3
+    ONEIN2 = 3
     """Auto trigger mode triggers each pixel 1 frame in 2,
     very fast for Hexitec MHz histogramming, probably OK for 6x2"""
 
@@ -239,22 +241,22 @@ class ClusterEnable(IntFlag):
 class NumBins(IntEnum):
     """Define the number of Energy Bins"""
 
-    ENG12    = 0
+    ENG12 = 0
     """Make histograms with 4096 energy bins"""
 
-    ENG11    = 1
+    ENG11 = 1
     """Make histograms with 2048 energy bins"""
 
-    ENG10    = 2
+    ENG10 = 2
     """Make histograms with 1024 energy bins"""
 
-    ENG9     = 3
+    ENG9 = 3
     """Make histograms with 512 energy bins"""
 
-    ENG8     = 4
+    ENG8 = 4
     """Make histograms with 256 energy bins"""
 
-    ENG7     = 5
+    ENG7 = 5
     """Make histograms with 128 energy bins"""
 
     ENG10LSB = 6
@@ -283,7 +285,7 @@ class RunMode(IntEnum):
 
     CALIBRATION_SPECIAL = 5
     """Special Calibration Mode.
-    
+
     Combined with NumBins.ENG10, it overlays all pixels, all 6 cluster type bits,
     1024 bins of LUT address, and 1024 Energy Bins
 
@@ -310,6 +312,7 @@ class MappedMode(IntEnum):
     INTERLEAVE = 2
     """Interleaved Map Mode"""
 
+
 class MappedView(IntEnum):
     """Define the spectra readout for a Data Mover"""
 
@@ -321,6 +324,7 @@ class MappedView(IntEnum):
 
     MAPPED16 = 2
     """Read all 16 mapped spectra bins"""
+
 
 class AutoMode(IntEnum):
     """Define how the Data Mover might trigger output automatically"""
@@ -334,6 +338,7 @@ class AutoMode(IntEnum):
     TRIGGER_READ_CLEAR = 2
     """Use TimeframeToken to trigger output of data. Also, clear the timeframe"""
 
+
 class FarmIndexMode(IntEnum):
     """Define of the farm index increments for the datamover"""
 
@@ -346,10 +351,11 @@ class FarmIndexMode(IntEnum):
     FROM_TF = 2
     """FarmIndex is equal to the LSBits of time frame, so fixed for a complete time frame."""
 
+
 class TimeFrameMasks(IntFlag):
     """Mask values for extracting info from Time Frame Registers"""
-    
-    INPUT_COUNT   = 0x7FFFFFFFF
+
+    INPUT_COUNT = 0x7FFFFFFFF
     """Extract Input Time Frame Count from register"""
 
     FLUSHED_VALID = (1 << 63)
@@ -360,11 +366,11 @@ class TimeFrameMasks(IntFlag):
 
 
 class TimeFrameStatus(IntEnum):
-    RUNNING = (1<<0)
+    RUNNING = (1 << 0)
     """ITFG is running (including paused waiting for triggers if used)"""
 
-    PAUSED = (1<<1)
+    PAUSED = (1 << 1)
     """ITFG is paused, waiting for trigger."""
 
-    FINISHED = (1<<2)
+    FINISHED = (1 << 2)
     """ITFG is has finished."""

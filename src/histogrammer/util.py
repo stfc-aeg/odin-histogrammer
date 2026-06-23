@@ -1,19 +1,24 @@
 import logging
-from typing import Callable, TypeVar, Literal, ParamSpec
+from typing import TypeVar, Literal, ParamSpec
+from enum import Enum
 from contextlib import redirect_stdout
 from functools import wraps
 
 T = TypeVar("T")
 P = ParamSpec("P")
 
+TriggerMode = Literal["hardware", "software"]
 AcquisitionMode = Literal["continuous", "timed", "count frames"]
 OutputMode = Literal["UDP", "HDF5"]
+
 
 class InternalLibException(Exception):
     """Exception that translates a RuntimeError thrown by the Pybind11 module into a python exception"""
 
+
 class HexitecUnconnectedException(Exception):
     """Exception that reports that the Hexitec device has not been connected"""
+
 
 class RedirectStdout:
 
@@ -37,7 +42,6 @@ class RedirectStdout:
         self._redirector.__exit__(exc_type, exc_value, traceback)
 
 
-
 def _get_bitwise_trailing_zeros(val):
     """Method to get the number of trailing 0s on a binary value.
     Used to calculate how much to shift a masked value to return the specific value regardless of its position"""
@@ -47,6 +51,7 @@ def _get_bitwise_trailing_zeros(val):
         v >>= 1
         c += 1
     return c
+
 
 def splitRegisterIntoValues(reg: int, *masks: int) -> tuple[int, ...]:
     """
@@ -65,6 +70,7 @@ def splitRegisterIntoValues(reg: int, *masks: int) -> tuple[int, ...]:
         retVal = retVal + ((reg & mask) >> shift,)
 
     return retVal
+
 
 def UsesHexitecLibrary(level=logging.DEBUG):
     """
@@ -86,3 +92,13 @@ def UsesHexitecLibrary(level=logging.DEBUG):
             return val
         return _wrapper
     return dectorator
+
+
+def enumToString(enumVal: Enum) -> str:
+    """Convert the Enum name to human readable text"""
+    return enumVal.name.replace("_", " ").title()
+
+
+def strToEnum(enumStr: str) -> str:
+    """Convert the """
+    return enumStr.replace(" ", "_").upper()
