@@ -108,7 +108,7 @@ class BaselineHandler(BaseHandler):
                 "absolute": {
                     "low": (
                         lambda: self.thres_abs[0],
-                        lambda val: self.setThreshold("main", [val, self.thres_abs[1]]),
+                        lambda val: self.setThreshold("absolute", [val, self.thres_abs[1]]),
                         {
                             "description": (
                                 "Absolute Trigger lower threshold. "
@@ -119,7 +119,7 @@ class BaselineHandler(BaseHandler):
                     ),
                     "high": (
                         lambda: self.thres_abs[1],
-                        lambda val: self.setThreshold("main", [self.thres_abs[0], val]),
+                        lambda val: self.setThreshold("absolute", [self.thres_abs[0], val]),
                         {
                             "description": (
                                 "Absolute Trigger upper threshold. "
