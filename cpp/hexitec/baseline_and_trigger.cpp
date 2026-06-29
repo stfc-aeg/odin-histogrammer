@@ -405,6 +405,7 @@ void XDmaHexitec::setLinearityOne(int chip, double offsetADUs)
 
 @param chip			Chip number or -1 to duplicate to all chips.
 @param clusterMode	Cluster recognition mode as specified by HEXITEC_CLUSTER_MODE_DEFS
+@param autoTrigRate Rate of auto triggerss in HEXITEC_CLUSTER_MODE_AUTO_OR_POS or HEXITEC_CLUSTER_MODE_AUTO
 */
 void XDmaHexitec::setClusterMode(int chip, int clusterMode, int autoTrigRate)
 {
@@ -419,6 +420,25 @@ void XDmaHexitec::setClusterMode(int chip, int clusterMode, int autoTrigRate)
 	value = HEXITEC_CLUSTER_MODE_SET(clusterMode) | HEXITEC_CLUSTER_AUTO_RATE(autoTrigRate);
 	setChipReg(chip, HEXITEC_CHIP_CLUSTER, value);
 }
+
+/**
+	Read cluster recognition mode.
+
+@param chip			Chip number or -1 to duplicate to all chips.
+@param clusterMode	Pointer to return Cluster recognition mode as specified by HEXITEC_CLUSTER_MODE_DEFS
+@param autoTrigRate Pointer to return Rate of auto triggerss in HEXITEC_CLUSTER_MODE_AUTO_OR_POS or HEXITEC_CLUSTER_MODE_AUTO
+*/
+void XDmaHexitec::getClusterMode(int chip, int *clusterMode, int *autoTrigRate)
+{
+	uint32_t value = getChipReg(chip, HEXITEC_CHIP_CLUSTER);
+	
+	if (clusterMode != nullptr)
+		*clusterMode = HEXITEC_CLUSTER_MODE_GET(value);
+	if (autoTrigRate != nullptr)
+		*autoTrigRate = HEXITEC_CLUSTER_AUTO_RATE_GET(value);
+}
+
+
 /** Load linearity correction set to be a simple gain scaling.
 The values in the file must read row 0,: col 0...79, row 1: col 0...79 etc.
 The values are ASCII doubles around 1.0, typically 1.2 for Hexitec

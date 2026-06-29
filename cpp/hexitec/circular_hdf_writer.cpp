@@ -1026,7 +1026,7 @@ void CircularHdfWriter::run(int options, int rawFramesPerTF, int64_t numTF)
 	std::chrono::duration<double> elapsedDur;
 	std::chrono::duration<double> itfgDur;
 	char fName[FILENAME_MAX+10];
-
+	int64_t extTimeframe=0L;
 	options |= TEST_HIT_OPT_READOUT_ECR;	// Always work in Eng Col row mode as this is all new firmware will support.
 	
 	engOnly = m_hexitec.getEngOnly(0);
@@ -1153,7 +1153,7 @@ void CircularHdfWriter::run(int options, int rawFramesPerTF, int64_t numTF)
 		{
 			mprintf(2, ".. Starting UDP transmit real data run for ever\n", m_numFramesPerRaw*rawFramesPerTF*numTF);
 			m_hexitec.setGlobReg(HEXITEC_GLB_RUN_REG,  HEXITEC_RUN_RUN);	
-			m_pb.sendFramesUDP(m_hexitec, 0x7FFFFFFFFFFFFFFFL); // This will take a very very long time
+			m_pb.sendFramesUDP(m_hexitec, 0x7FFFFFFFFFFFFFFFL, , 0, extTimeframe); // This will take a very very long time
 			return;
 		}
 		else
@@ -1176,7 +1176,7 @@ void CircularHdfWriter::run(int options, int rawFramesPerTF, int64_t numTF)
 			// FixMe: Needs work here
 			mprintf(2, ".. Starting UDP transmit real data run for ever\n", m_numFramesPerRaw*rawFramesPerTF*numTF);
 			m_hexitec.setGlobReg(HEXITEC_GLB_RUN_REG,  HEXITEC_RUN_RUN);	
-			m_pb.sendFramesUDP(m_hexitec, 0x7FFFFFFFFFFFFFFFL); // This will take a very very long time
+			m_pb.sendFramesUDP(m_hexitec, 0x7FFFFFFFFFFFFFFFL, 0, extTimeframe); // This will take a very very long time
 			return;
 		}
 		else
@@ -1205,7 +1205,7 @@ void CircularHdfWriter::run(int options, int rawFramesPerTF, int64_t numTF)
 	{
 		mprintf(2, ".. Starting UDP transmit real data run for %d frames\n", m_numFramesPerRaw*rawFramesPerTF*numTF);
 		m_hexitec.setGlobReg(HEXITEC_GLB_RUN_REG,  HEXITEC_RUN_RUN);	
-		m_pb.sendFramesUDP(m_hexitec, (int64_t)m_numFramesPerRaw*rawFramesPerTF*numTF);
+		m_pb.sendFramesUDP(m_hexitec, (int64_t)m_numFramesPerRaw*rawFramesPerTF*numTF, 0, extTimeframe);
 		startHist = std::chrono::steady_clock::now(); 
 		this_thread::sleep_for (chrono::microseconds(1000));	
 	}

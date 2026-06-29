@@ -12,7 +12,7 @@ from histogrammer.adapter.histogrammer import Histogrammer
 from histogrammer.adapter.AcquisitionHandler import runStatus
 from histogrammer.util import HexitecUnconnectedException, InternalLibException
 from histogrammer.lib.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode
-from histogrammer.lib.defines import BaselineDivide, BaselineMask, RunMode, NumBins
+from histogrammer.lib.defines import RunMode, NumBins
 
 
 class HistogramException(BaseError):
@@ -66,31 +66,48 @@ class HistogramController(BaseController):
         tree_acquisition["run"] = (
             lambda: self.histogrammer.acqHandler.runStatus == "running", self.setRun)
 
+        tree_baseline = self.histogrammer.baselineHandler.param_tree["baseline"]
+        tree_baseline["init_baseline"] = (
+            lambda: self.histogrammer.initBaseline,
+            partial(self.setValue, "initBaseline"),
+            {"description": "Reset the baseline subtraction before starting a new acquisiton"}
+        )
+        tree_thresholds = self.histogrammer.baselineHandler.param_tree["thresholds"]
+        tree_thresholds["bad_pixel"] = {
+            "filename": (
+                lambda: self.fname_badPixelTrig,
+                partial(self.setValue, "fname_badPixelTrig"),
+                {"allowed_values": self.allowed_file_names}
+            ),
+            "load": (None, lambda _: self.loadLUTAsciiFile("badPixelTrig"))
+        }
+
         tree = {
             "device": tree_device,
             "acquisition": tree_acquisition,
             "udp": self.histogrammer.udpHandler.param_tree,
             "config": {
+                "thresholds": tree_thresholds,
+                "baseline": tree_baseline,
                 "hdf_filename": (lambda: self.fname_hdf, partial(self.setValue, "fname_hdf")),
                 "save_hdf": (None, self.save_hdf_settings),
                 "load_hdf": (None, self.load_hdf_settings),
 
                 # cluster mode, the cluster patterns used, and the trigger mode for pixels
                 "clustering": {
-                    "mode": (lambda: self.enumToString(self.histogrammer.clusterMode),
+                    "mode": (lambda: self.histogrammer.clusterMode.name,
                              partial(self.setCluster, "clusterMode"),
-                             {"allowed_values": [self.enumToString(val) for val in ClusterMode]}),
+                             {"allowed_values": [val.name for val in ClusterMode]}),
                     "types": {  # dict comprehension to create bool param for each flag option
-                        self.enumToString(enb): (partial(
+                        enb.name: (partial(
                             self.getClusterType, enb),
                             partial(self.setClusterType, enb)
                         ) for enb in ClusterEnable
                     },
-                    "auto_trig_mode": (lambda: self.enumToString(self.histogrammer.autoTrigMode),
+                    "auto_trig_mode": (lambda: self.histogrammer.autoTrigMode.name,
                                        partial(self.setCluster, "autoTrigMode"),
-                                       {"allowed_values": [
-                                           self.enumToString(val) for val in AutoTrigMode
-                                       ]})
+                                       {"allowed_values": [val.name for val in AutoTrigMode]}
+                                       )
 
                 },
                 "charge_sharing": {
@@ -154,14 +171,12 @@ class HistogramController(BaseController):
                     "num_bins": (lambda: self.numBins_allowed[self.histogrammer.numBins],
                                  partial(self.setHistFormat, "numBins"),
                                  {"allowed_values": self.numBins_allowed}),
-                    "run_mode": (lambda: self.enumToString(self.histogrammer.runMode),
+                    "run_mode": (lambda: self.histogrammer.runMode.name,
                                  partial(self.setHistFormat, "runMode"),
-                                 {"allowed_values": [self.enumToString(val) for val in RunMode]}),
-                    "mapped_mode": (lambda: self.enumToString(self.histogrammer.mappedMode),
+                                 {"allowed_values": [val.name for val in RunMode]}),
+                    "mapped_mode": (lambda: self.histogrammer.mappedMode.name,
                                     partial(self.setHistFormat, "mappedMode"),
-                                    {"allowed_values": [
-                                        self.enumToString(val) for val in MappedMode
-                                    ]}),
+                                    {"allowed_values": [val.name for val in MappedMode]}),
                     "bad_pixel_mask": {  # load file to define which pixel output to mask out
                         "filename": (
                             lambda: self.fname_badPixelOut,
@@ -170,76 +185,6 @@ class HistogramController(BaseController):
                         ),
                         "load": (None, lambda _: self.loadLUTAsciiFile("badPixelOutput"))
                     }
-                },
-                "thresholds": {  # set the trigger thresholds for the three available triggers
-                    "main": {
-                        "neg": (
-                            lambda: self.histogrammer.thres_main[0],
-                            lambda val: self.setThreshold(
-                                "main", val, self.histogrammer.thres_main[1]),
-                            {"min": self.histogrammer.THRES_MIN, "max": 0}
-                        ),
-                        "pos": (
-                            lambda: self.histogrammer.thres_main[1],
-                            lambda val: self.setThreshold(
-                                "main", self.histogrammer.thres_main[0], val),
-                            {"min": 0, "max": self.histogrammer.THRES_MAX}
-                        )
-                    },
-                    "low": {
-                        "neg": (
-                            lambda: self.histogrammer.thres_low[0],
-                            lambda val: self.setThreshold(
-                                "lower", val, self.histogrammer.thres_low[1]),
-                            {"min": self.histogrammer.THRES_MIN, "max": 0}
-                        ),
-                        "pos": (
-                            lambda: self.histogrammer.thres_low[1],
-                            lambda val: self.setThreshold(
-                                "lower", self.histogrammer.thres_low[0], val),
-                            {"min": 0, "max": self.histogrammer.THRES_MAX}
-                        )
-                    },
-                    "absolute": {
-                        "low": (
-                            lambda: self.histogrammer.thres_abs[0],
-                            lambda val: self.setThreshold(
-                                "absolute", val, self.histogrammer.thres_abs[1]),
-                            {"min": 0, "max": self.histogrammer.THRES_MAX}
-                        ),
-                        "high": (
-                            lambda: self.histogrammer.thres_abs[1],
-                            lambda val: self.setThreshold(
-                                "absolute", self.histogrammer.thres_abs[0], val),
-                            {"min": 0, "max": self.histogrammer.THRES_MAX}
-                        )
-                    },
-                    # load a file that defines which pixels should have the main trig disabled
-                    "bad_pixel": {
-                        "filename": (
-                            lambda: self.fname_badPixelTrig,
-                            partial(self.setValue, "fname_badPixelTrig"),
-                            {"allowed_values": self.allowed_file_names}
-                        ),
-                        "load": (None, lambda _: self.loadLUTAsciiFile("badPixelTrig"))
-                    }
-                },
-                "baseline": {
-                    "mask": (lambda: self.enumToString(self.histogrammer.baselineMask),
-                             partial(self.setBaselineMode, "baselineMask"),
-                             {"allowed_values": [self.enumToString(val) for val in BaselineMask]}),
-                    "divide": (
-                        lambda: int("".join(filter(
-                            str.isdigit, self.histogrammer.baselineDiv.name)
-                        )),
-                        partial(self.setBaselineMode, "baselineDiv"),
-                        {"allowed_values": [
-                            int("".join(filter(str.isdigit, val.name))) for val in BaselineDivide]}
-                    ),
-                    "dither": (
-                        lambda: self.histogrammer.enableDither,
-                        partial(self.setBaselineMode, "enableDither")
-                    )
                 }
             }
         }
@@ -272,13 +217,6 @@ class HistogramController(BaseController):
     def cleanup(self) -> None:
         logging.debug("Shutting down Histogrammer")
         self.histogrammer.disconnect()
-
-    def enumToString(self, enumVal: Enum) -> str:
-        val_name = enumVal._name_
-        return val_name.lower().replace("_", " ")
-
-    def stringToEnum(self, enumStr: str) -> str:
-        return enumStr.upper().replace(" ", "_")
 
     def setValue(self, param: str, value):
         """Set the specified attribute on the Histogrammer object
@@ -336,9 +274,9 @@ class HistogramController(BaseController):
         """
 
         if setting == "clusterMode":
-            val: ClusterMode = ClusterMode[self.stringToEnum(value)]
+            val: ClusterMode = ClusterMode[value]
         else:
-            val: AutoTrigMode = AutoTrigMode[self.stringToEnum(value)]
+            val: AutoTrigMode = AutoTrigMode[value]
         self.setValue(setting, val)
         self.histogrammer.setClusterMode()
 
@@ -351,9 +289,9 @@ class HistogramController(BaseController):
                 index = 0
             val = NumBins(index)
         elif setting == "mappedMode":
-            val = MappedMode[self.stringToEnum(value)]
+            val = MappedMode[value]
         elif setting == "runMode":
-            val = RunMode[self.stringToEnum(value)]
+            val = RunMode[value]
         else:
             raise HistogramException("Hist Format Setting invalid: {}".format(setting))
 
@@ -375,21 +313,6 @@ class HistogramController(BaseController):
             self.histogrammer.clusterType = self.histogrammer.clusterType & ~flag
 
         self.histogrammer.setClusterTypes(self.histogrammer.clusterType)
-
-    def setBaselineMode(self,
-                        setting: Literal["enableDither", "baselineDiv", "baselineMask"],
-                        value: str | bool | int):
-
-        if setting == "baselineMask":
-            val: BaselineMask = BaselineMask[self.stringToEnum(value)]
-        elif setting == "baselineDiv":
-            val: BaselineDivide = BaselineDivide["BSUB_DIVIDE{}".format(value)]
-        else:
-            val: bool = value
-
-        self.setValue(setting, val)
-
-        self.histogrammer.setBaseline()
 
     def setLinOffset(self, offset: float):
         self.histogrammer.lin_offset = offset

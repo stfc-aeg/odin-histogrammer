@@ -299,6 +299,7 @@ void XDma::readAlignedDma(char *buffer, uint64_t AXIAddress, uint64_t numBytes, 
 		if (rc != offset)
 			throw XDmaException("readAlignedDma: dmaChan=%d, fd=%d, seek off 0x%lx != 0x%lx. Errno=%d", dmaChan, m_c2h_fd[dmaChan], rc, offset, errno);
 */
+		//printf("readAlignedDma: reading from 0x%010lX for 0x%08lx\n", offset, bytes);
 		/* read data from file into memory buffer */
 		rc = pread(m_c2h_fd[dmaChan], buf, bytes, offset);
 		if (rc < 0)

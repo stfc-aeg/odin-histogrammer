@@ -336,8 +336,7 @@ void XDmaHexitec::setGlobReg(int offset, uint32_t value)
 {
 	volatile uint32_t *p;
 	p = m_regs+m_globOffset/sizeof(uint32_t)+offset;
-		*p = value;
-	
+	*p = value;
 }
 uint32_t XDmaHexitec::getGlobReg(int offset)
 {
@@ -345,6 +344,13 @@ uint32_t XDmaHexitec::getGlobReg(int offset)
 	p = m_regs+m_globOffset/sizeof(uint32_t)+offset;
 	return *p;
 }
+void XDmaHexitec::setGlobReg64(int offset, uint64_t value)
+{
+	volatile uint32_t *p;
+	p = m_regs+m_globOffset/sizeof(uint32_t)+offset;
+	*reinterpret_cast<volatile uint64_t *>(p) = value;
+}
+
 /* access register as 64 bit but offset is still measured in 32 bit words */
 uint64_t XDmaHexitec::getGlobReg64(int offset)
 {
@@ -1140,6 +1146,10 @@ void XDmaHexitec::startDataMoverStream(int timeFrame, enum MappedView mappedView
 	volatile uint32_t *ptr;
 	volatile uint8_t * p8;
 	uint32_t readoutMode=0;
+	
+	if (m_xdma->getStQid() < 0)
+		throw XDmaHexitecException("startDataMoverStream: QDMA queue id=%d is not valid. Does this support QDMA?", m_xdma->getStQid());
+	
 	ptr = m_dataMoverRegs + HEXITEC_DM_CONTEXT_OFFSET/sizeof(uint32_t)+m_xdma->getStQid()*8;
 
 	switch (mappedView)
@@ -1179,9 +1189,10 @@ void XDmaHexitec::startDataMoverStream(int timeFrame, enum MappedView mappedView
 	Wait for the data mover to have finished output the specified number of frames. 
 	The function determines whether the queue is working in autonomous mode. If so it wait for the time frame to reach numTF-1. 
 	If it is in non-autonomous mode, software triggers, it waits for the Run bit to drop.
-@param numTF-1		Number of time frames to have finished. 	
+@param numTF		Number of time frames to have finished. 	
 @param qid			Queue id to be started.
 */
+#if 0
 void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
 {
 	volatile uint32_t *ptr;
@@ -1195,7 +1206,7 @@ void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
 		do 
 		{
 			tf = ptr[2] >> 8;
-			tf |= static_cast<int64_t>((ptr[3] & 0xfff) << 24);
+			tf |= static_cast<int64_t>((ptr[3] & 0xfff)) << 24;
 			printf("waitDataMoverFinished: quid=%d, current TF=%ld\n", qid, tf);
 			if (tf == numTF-1)
 				numMatch++;
@@ -1220,23 +1231,67 @@ void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
 			throw XDmaHexitecException("waitDataMoverFinished: Timeout waiting DataMover queue %d to finish %ld frames", qid, numTF);
 	}
 }
+#else
+void XDmaHexitec::waitDataMoverFinished(int64_t numTF, int qid)
+{
+	volatile uint32_t *ptr;
+	int64_t tf=numTF-1;
+	int timeout=0;
 
+	while (!isDataMoverFinished(numTF, qid, &tf) && timeout++ < 1000)
+	{
+		printf("waitDataMoverFinished: quid=%d, current TF=%ld\n", qid, tf);
+		this_thread::sleep_for(chrono::milliseconds(10));
+	}
+		
+	if (timeout == 1000)
+		throw XDmaHexitecException("waitDataMoverFinished: Timeout waiting DataMover queue %d to finish %ld frames, Last polled=%ld", qid, numTF, tf);
+}
+#endif
+/**
+	Poll to see if the data mover has finished output the specified number of frames. 
+	The function determines whether the queue is working in autonomous mode. If so it checks for the time frame to reach numTF-1. 
+	If it is in non-autonomous mode, software triggers, it returns the status of the Run bit.
+@param numTF		Number of time frames to have finished. 	
+@param qid			Queue id to be started.
+*/
+bool XDmaHexitec::isDataMoverFinished(int64_t numTF, int qid, int64_t *curTF)
+{
+	volatile uint32_t *ptr;
+	int64_t tf;
+	ptr = m_dataMoverRegs+ HEXITEC_DM_CONTEXT_OFFSET/sizeof(uint32_t)+qid*8;
+	if (*ptr & HEXITEC_DM0_AUTO_TF)
+	{
+		for (int i=0; i<2; i++)
+		{
+			tf = ptr[2] >> 8;
+			tf |= static_cast<int64_t>((ptr[3] & 0xfff)) << 24;
+			if (curTF != nullptr)
+				*curTF = tf;
+			if (tf != numTF-1)
+				return false;
+		}
+		return true;
+	}
+	else
+		return !(ptr[3] & HEXITEC_DM3_RUN);
+}
 
 /**
 	Start the datamover to output frames via the 100 G Ethernet UDP interface.
-	The data mover can either be triggerted to output each time frame by software using this function with autoMode=AutoOff, 
+	The data mover can either be triggered to output each time frame by software using this function with autoMode=AutoOff, 
 	or can be armed to trigger when the flushed time frame token advances in the firmware, normaly with autoMode=AutoTriggerReadAndClear or autoMode=AutoTriggerRead for debug.
 	If the system is configured with mappeMode==HEXITEC_HIST_MAPPED_MODE_INTL, then separate Queues are setup to transmit the full spectra and mapped spectra to separate UDP ports.
 
 @param tfExt		Time frame to send when sending individual time frame. Last time frame sent (new frames are sent)  -1L to start from frame 0.
-@param mappedView	Specifiy whether this queue send the full specrate, 16 bin mapped spectra or the first 8 mins of mapped spectra
+@param mappedView	Specify whether this queue send the full spectra, 16 bin mapped spectra or the first 8 mins of mapped spectra
 @param sixteenBit	The firmware reads the 32 bit values but limit the range at 65535and sends as 16 bit data.
 @param sumChips		When data for all chips when running in EngOnly Modes for e.g. Hexitec 6x2.
 @param qid			Queue id to be started.
 @param farmMask		Mask (typically 0, 1, 3 or 7) to be used to select the bottom 0, 1, 2 or 3 bits of the index to create the UDP core farm mode address.
-@param farmBase		First address in the UDP core  fram LUT which is ORed with the maksed index to form the complete LUT address.
+@param farmBase		First address in the UDP core  farm LUT which is ORed with the maksed index to form the complete LUT address.
 @param autoMode		Specifies whether the specified frame is sent now autoMode=AutoOff or whether autonomous triggering is enabled autoMode=AutoTriggerReadAndClear or autoMode=AutoTriggerRead
-@param farmIndexMode Specifies what index is used to crease the UDP core farm LUT address.  This can be from the time frame or can incremetn each packet. See FarmIndexMode.
+@param farmIndexMode Specifies what index is used to crease the UDP core farm LUT address.  This can be from the time frame or can increment each packet. See FarmIndexMode.
 */
 
 int XDmaHexitec::startDataMoverStreamUDP(int64_t tfExt, enum MappedView mappedView, bool sixteenBit, bool sumChips, int qid, int farmMask, int farmBase, enum AutonomousMode autoMode, enum FarmIndexMode farmIndexMode)
@@ -1637,4 +1692,70 @@ uint64_t XDmaHexitec::getInpTimeFrame(int chip)
 	if (chip < 0 || chip >= m_numChips)
 		throw XDmaHexitecException("getInpTimeFrame: chip=%d out of range 0...%d", chip, m_numChips-1);
 	return getGlobReg64(HEXITEC_GLB_INP_TIME_FRAME0+2*chip);
+}
+inline void XDmaHexitec::readOneFrameInfo(volatile uint64_t *p64, HexitecTimeFrameInfo *data)
+{
+	uint64_t d = *p64++;
+	data->enabledFrames = HEXITEC_ENB_FRMS0_GET_FRAME(d);
+	data->extTrigLast = HEXITEC_ENB_FRMS0_GET_EXT_TRIG(d);
+	data->extTrigLatched = HEXITEC_ENB_FRMS0_GET_EXT_TRIG_LCH(d);
+	d = *p64;
+	data->rawHits = HEXITEC_ENB_FRMS1_GET_RAW_HITS(d);
+}
+
+void XDmaHexitec::readTimeFrameInfo(int chip, int64_t firstTF, int numTF, HexitecTimeFrameInfo *data)
+{
+	volatile uint32_t *p, *chipSel;
+	volatile uint64_t *p64;
+	uint64_t d;
+	
+	int startTF;
+	int chunkNumTF;
+	if (chip < 0 || chip >= m_numChips)
+		throw XDmaHexitecException("readEnabledFrameCounts: chip=%d out of range 0...%d", chip, m_numChips-1);
+	if (numTF > HEXITEC_ENABLED_FRAMES_SIZE)
+		throw XDmaHexitecException("readEnabledFrameCounts: chip=%d: numTF=%d > ring buffer size=%d", chip, numTF, HEXITEC_ENABLED_FRAMES_SIZE);
+	if (m_useChipSel)
+	{
+		chipSel = m_regs+m_globOffset/sizeof(uint32_t)+HEXITEC_GLB_SCOPE_CHIP_SEL;
+		*chipSel = chip;
+		p = m_regs+HEXITEC_REGION_OFFSET*HEXITEC_REGION_ENABLED_FRAMES;
+	}
+	else
+	{
+		p = m_regs+(HEXITEC_NUM_REGIONS*HEXITEC_REGION_OFFSET*chip)+HEXITEC_REGION_OFFSET*HEXITEC_REGION_ENABLED_FRAMES;
+	}
+	startTF = static_cast<int>(firstTF % HEXITEC_ENABLED_FRAMES_SIZE);
+	chunkNumTF = numTF;
+	if (numTF+startTF > HEXITEC_ENABLED_FRAMES_SIZE)
+		chunkNumTF = HEXITEC_ENABLED_FRAMES_SIZE-startTF;
+	p64 = reinterpret_cast<volatile uint64_t *>(p);
+	p64 += startTF;
+	for (int i=0; i<chunkNumTF; i++)
+	{
+		readOneFrameInfo(p64, data++);
+		p64+=2;
+	}
+
+	if (chunkNumTF != numTF)
+	{
+		p64 = reinterpret_cast<volatile uint64_t *>(p);
+		for (int i=0; i<numTF-chunkNumTF; i++)
+		{
+			readOneFrameInfo(p64, data++);
+			p64+=2;
+		}
+	}
+}
+
+/**
+	Write the last completed time frame to the software triggered flush register to trigger UDP data output.
+	Since this is the last frame write numFrames-1.
+	This is used when hardware triggered flushing is not enabled. i.e. HEXITEC_DATA_PATH_ENB_FLUSH is not set in the dataPath.
+
+@param lastFrame is number (from 0) of the last frame completed.
+*/
+void XDmaHexitec::softwareFlush(uint64_t lastFrame)
+{
+	setGlobReg64(HEXITEC_GLB_SOFTWARE_FLUSH, lastFrame);
 }

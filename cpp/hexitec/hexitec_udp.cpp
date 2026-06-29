@@ -536,7 +536,7 @@ int XDmaHexitec::getUdpTxTestSocket(int index)
 	return m_udpTxTestSocket[index];
 }
 
-int XDmaHexitec::udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, size_t payloadBytes, int debugTag, bool discardStale, int64_t *dataMoverOverRunPtr )
+int XDmaHexitec::udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, size_t payloadBytes, int debugTag, bool discardStale, int64_t *dataMoverOverRunPtr, HexitecTimeFrameInfo *tfInfo )
 {
 	char sideBuffer[HEXITEC_UDP_TRAILER_BYTES+HEXITEC_UDP_MAX_FRAME_BYTES];
 	char *p;
@@ -550,8 +550,9 @@ int XDmaHexitec::udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, s
 	int64_t recvFrame;
 	int pNumErrors=0;
 	int fNumErrors=0;
+	int infoErrors=0;
 	int64_t dataMoverOverRunFrame=(dataMoverOverRunPtr!=nullptr)?*dataMoverOverRunPtr:-1L;
-	
+	HexitecTimeFrameInfo curInfo, recvInfo;
 	
 	if (index < 0 || index >= HEXITEC_MAX_FARM_SOCKETS || m_udpTxTestSocket[index] < 0)
 		throw XDmaException("udpTxTestReadFrame: Invalid socket index %d", index);
@@ -592,12 +593,27 @@ int XDmaHexitec::udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, s
 		tptr = (uint64_t *)(p+rc-HEXITEC_UDP_TRAILER_BYTES);
 		recvPacket = HEXITEC_UDP_TRAILER7_PACKET(tptr[7]);
 		recvFrame  = HEXITEC_UDP_TRAILER7_FRAME(tptr[7]);
+		recvInfo.rawHits = HEXITEC_UDP_TRAILER3_RAW_HITS(tptr[3]);
+		recvInfo.enabledFrames = HEXITEC_UDP_TRAILER4_INP_FRAMES(tptr[4]);
+		recvInfo.extTrigLatched = HEXITEC_UDP_TRAILER4_EXT_TRIG_LCH(tptr[4]);
+		recvInfo.extTrigLast = HEXITEC_UDP_TRAILER4_EXT_TRIG(tptr[4]);
+
 		if (timeFrame < 0)
 			timeFrame = recvFrame;
 		else if (timeFrame != recvFrame)
 		{
 			if (++fNumErrors < 4);
 				printf("Time frame mismatch tag=%d: expecting %ld, received %ld at packet=%d\n", debugTag, timeFrame, recvFrame, recvPacket);
+		}
+		if (packetNum  < 0)
+			curInfo = recvInfo;
+		else if (curInfo != recvInfo)
+		{	
+			if (++infoErrors<4)
+				printf("Time frame info mismatch: tag=%d, timeFrame=%ld, previous: len=%ld, rawHits=%ld, extTrig=%d, latchedTrig=%d; packect=%d: len=%ld, rawHits=%ld, extTrig=%d, latchedTrig=%d\n",
+					debugTag, timeFrame, curInfo.enabledFrames, curInfo.rawHits, curInfo.extTrigLast, curInfo.extTrigLatched, 
+					packetNum, recvInfo.enabledFrames, recvInfo.rawHits, recvInfo.extTrigLast, recvInfo.extTrigLatched );
+			curInfo = recvInfo;
 		}
 		int dataMoverOverrun = (int) HEXITEC_UDP_TRAILER5_OVERRUN(tptr[5]);
 		if (dataMoverOverrun != 0)
@@ -649,22 +665,26 @@ int XDmaHexitec::udpTxTestReadFrame(int index, int64_t & timeFrame, char *buf, s
 	} while (bytesRead < payloadBytes);
 	if (dataMoverOverRunPtr !=nullptr)
 		*dataMoverOverRunPtr = dataMoverOverRunFrame;
-	return fNumErrors+pNumErrors;
+	if (tfInfo != nullptr)
+		*tfInfo = recvInfo;
+	return fNumErrors+pNumErrors+infoErrors;
 //	printf("\n");
 }
 
-string XDmaHexitec::udpShowRxStatus()
+string XDmaHexitec::udpShowRxStatus(bool onlyOnError)
 {
 	int i;
 	uint32_t status = getGlobReg(HEXITEC_GLB_UDP_STATUS);
 	uint64_t frame, packet;
+	if (status == 0 && onlyOnError)
+		return string();
 	stringstream sstream; 
 	for (i=0;i<m_numRxUdp; i++)
 	{
 		frame = getGlobReg64(HEXITEC_GLB_UDP_ERROR_FRAME0+2*i);
 		packet = getGlobReg64(HEXITEC_GLB_UDP_ERROR_PACKET0+2*i);
-		sstream << "UDP RX" << i << "UnexpectedSOF=" << HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(status,i);
-		sstream << ", Bad packet Num=" << HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(status, i) << ", Missing EOF=" << HEXITEC_RX_STAT_MISSING_EOF_MHZ(status, i) << endl;
+		sstream << "UDP RX" << i << ", UnexpectedSOF=" << HEXITEC_RX_STAT_UNEXPECTED_SOF_MHZ(status,i) << ", Missing EOF=" << HEXITEC_RX_STAT_MISSING_EOF_MHZ(status, i);
+		sstream << ", Bad packet Num=" << HEXITEC_RX_STAT_BAD_PACKET_NUM_MHZ(status, i) << ", Bad Frame Num =" << HEXITEC_RX_STAT_FRAME_NUM_ERROR_MHZ(status, i) << endl;
 		sstream << "Flags=" << HEXITEC_RX_STAT_FLAGS_MHZ(status, i) << ", Packet=" << packet <<	", Frame=" << frame << endl;
 	}
 	return sstream.str();
