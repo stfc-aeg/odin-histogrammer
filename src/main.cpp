@@ -304,41 +304,84 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         self.writePixelMask(chip, firstCol, numCols, firstRow, numRows, x);
     });
 
+    // Source IP Addr Get/Set
+    // IP Addr of the Alpha Data card producing raw data
     hexitec.def("getSrcAddr", [](XDmaHexitec &self, int core)
     {
         // RX UDP cores are in RX mode, so Destination and Source are flipped
         return self.m_udpCore[core].getDstIpAddr();
     }, py::arg("core") = 0);
 
+    hexitec.def("setSrcAddr", [](XDmaHexitec &self, int addr, int core)
+    {
+        self.m_udpCore[core].setDstIpAddr(addr);
+
+    }, py::arg("addr"), py::arg("core") = 0);
+
+    // Destination IP Addr Get/Set
+    // IP Addr of the network interface sending completed Histogram Packets to
     hexitec.def("getDestAddr", [](XDmaHexitec &self, int core)
     {
+        //Note this is using the TxCore Array of UDP Cores.
         return self.m_udpTxCore[core].getDstIpAddr();
     }, py::arg("core") = 0);
 
+    hexitec.def("setDestAddr", [](XDmaHexitec &self, int addr, int core)
+    {
+        self.m_udpTxCore[core].setDstIpAddr(addr);
+    }, py::arg("addr"), py::arg("core") = 0);
+
+    // Accelerator (The Histogrammer Card) IP Addr Get/Set
+    // IP Address the histogrammer is receiving raw data on
     hexitec.def("getAccelRXAddr", [](XDmaHexitec &self, int core)
     {
+        // RX UDP cores are in RX mode, so dest/src are swapped
         return self.m_udpCore[core].getSrcIpAddr();
     }, py::arg("core") = 0);
+    
+    hexitec.def("setAccelRXAddr", [](XDmaHexitec &self, int addr, int core)
+    {
+        self.m_udpCore[core].setSrcIpAddr(addr);
+    }, py::arg("addr"), py::arg("core") = 0);
 
     hexitec.def("getAccelTXAddr", [](XDmaHexitec &self, int core)
     {
         return self.m_udpTxCore[core].getSrcIpAddr();
     }, py::arg("core") = 0);
 
+    hexitec.def("setAccelTXAddr", [](XDmaHexitec &self, int addr, int core)
+    {
+        self.m_udpTxCore[core].setSrcIpAddr(addr);
+    }, py::arg("addr"), py::arg("core") = 0);
+
+    // Get/Set Ports
     hexitec.def("getSrcPort", [](XDmaHexitec &self)
     {
         return self.m_udpCore[0].getDstPort();
+    });
+    hexitec.def("setSrcPort", [](XDmaHexitec &self, int port)
+    {
+        self.m_udpCore[0].setDstPort(port);
     });
 
     hexitec.def("getAccelPort", [](XDmaHexitec &self)
     {
         return self.m_udpCore[0].getSrcPort();
     });
+    hexitec.def("setAccelPort", [](XDmaHexitec &self, int port)
+    {
+        self.m_udpCore[0].setSrcPort(port);
+    });
 
     hexitec.def("getDestPort", [](XDmaHexitec &self)
     {
         return self.m_udpTxCore[0].getDstPort();
     });
+    hexitec.def("setDestPort", [](XDmaHexitec &self, int port)
+    {
+        self.m_udpTxCore[0].setDstPort(port);
+    });
+
 
     hexitec.def("saveSpectraHdf5", [](XDmaHexitec &self, 
         char *fname, int chip, 
@@ -358,15 +401,6 @@ PYBIND11_MODULE(_core, m, py::mod_gil_not_used(), py::multiple_interpreters::per
         self.saveSpectraHdf5(fname, chip, numEng, firstTF, numTFSpectra, numTFMapped,
                              enbSpectra, enbMapped, sumChips, extComment);
     });
-
-    // hexitec.def("getDataMoverContext", [](XDmaHexitec &self, int qid)
-    // {
-    //     volatile uint32_t *dataMoverRegs, *ptr;
-    //     dataMoverRegs = self.m_xdma->m_regsBAR.m_base+HEXITEC_DATA_MOVER_BASE/sizeof(uint32_t);
-    //     ptr = dataMoverRegs + HEXITEC_DM_CONTEXT_OFFSET/sizeof(uint32_t)+qid*8;
-    //     std::vector<uint32_t> retVal(ptr, ptr+4);
-    //     return retVal;
-    // });
 
     hexitec.def("readDataMoverStream", [](XDmaHexitec &self, int qid)
     {

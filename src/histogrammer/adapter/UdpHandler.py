@@ -58,12 +58,42 @@ class UdpHandler(BaseHandler):
 
     def initialise(self, hexitec):
         super().initialise(hexitec)
-        # read values from device
-        
-        self.source_ip = ip_address(hexitec.getSrcAddr())
-        self.dest_ip = ip_address(hexitec.getDestAddr())
-        self.accel_rx_ip = ip_address(hexitec.getAccelRXAddr())
-        self.accel_tx_ip = ip_address(hexitec.getAccelTXAddr())
+        # read values from device, unless set by config file
+        if int(self.source_ip):
+            hexitec.setSrcAddr(int(self.source_ip))
+        else:
+            self.source_ip = ip_address(hexitec.getSrcAddr())
+
+        if int(self.dest_ip):
+            hexitec.setDestAddr(int(self.dest_ip))
+        else:
+            self.dest_ip = ip_address(hexitec.getDestAddr())
+
+        if int(self.accel_rx_ip):
+            hexitec.setAccelRXAddr(int(self.accel_rx_ip))
+        else:
+            self.accel_rx_ip = ip_address(hexitec.getAccelRXAddr())
+
+        if int(self.accel_tx_ip):
+            hexitec.setAccelTXAddr(int(self.accel_tx_ip))
+        else:
+            self.accel_tx_ip = ip_address(hexitec.getAccelTXAddr())
+
+        # port numbers
+        if self.source_port:
+            hexitec.setSrcPort(self.source_port)
+        else:
+            self.source_port = hexitec.getSrcPort()
+
+        if self.dest_port:
+            hexitec.setDestPort(self.dest_port)
+        else:
+            self.dest_port = hexitec.getDestPort()
+
+        if self.accel_port:
+            hexitec.setAccelPort(self.accel_port)
+        else:
+            self.accel_port = hexitec.getAccelPort()
 
     def cleanup(self):
         try:
@@ -155,7 +185,7 @@ class UdpHandler(BaseHandler):
                                                  True, 0, farmMask, farmBase, autoMode, farmIndex)
             self.dmStatus[0] = "idle"
             farmBase += farmMask + 1
-        
+
         # if mapped mode is set to allow Mapped output (ONLY or INTERLEAVE)
         if mappedMode != MappedMode.OFF:
             logging.debug("Setting up UDP Datamover for Mapped Output")
