@@ -6,12 +6,21 @@ from tornado.ioloop import PeriodicCallback, IOLoop
 from histogrammer.lib import XDmaHexitec
 from histogrammer.lib import HexitecSaveRestore
 
-from histogrammer.lib import MASK_HIST_FORMAT_NUMBINS, MASK_HIST_FORMAT_RUNMODE, MASK_HIST_FORMAT_MAPPEDMODE
+from histogrammer.lib import (
+    MASK_HIST_FORMAT_NUMBINS,
+    MASK_HIST_FORMAT_RUNMODE,
+    MASK_HIST_FORMAT_MAPPEDMODE)
 from histogrammer.lib import MASK_CLUSTER_MODE, MASK_CLUSTER_TRIG_MODE
-from histogrammer.lib import MASK_CSHARE_ENB_EDGE, MASK_CSHARE_ENB_NEG, MASK_CSHARE_ENB_L_POS, MASK_CSHARE_DIS_SUM, MASK_CSHARE_DIS_ADJ
+from histogrammer.lib import (
+    MASK_CSHARE_ENB_EDGE,
+    MASK_CSHARE_ENB_NEG,
+    MASK_CSHARE_ENB_L_POS,
+    MASK_CSHARE_DIS_SUM,
+    MASK_CSHARE_DIS_ADJ)
 from histogrammer.lib import DATA_PATH_SHORT_BURST_MODE
 
-from histogrammer.lib.defines import MappedMode, NumBins, RunMode, ClusterMode, ClusterEnable, AutoTrigMode
+from histogrammer.lib.defines import MappedMode, NumBins, RunMode
+from histogrammer.lib.defines import ClusterMode, ClusterEnable, AutoTrigMode
 from histogrammer.lib.defines import Region, GlobalRegisters, ChipRegisters
 
 from histogrammer.adapter.base_handler import BaseHandler
@@ -225,15 +234,15 @@ class Histogrammer:
         self.checkRunEndFlagsCallback.start()
 
     def stop_run(self):
-        logging.debug("Manually Stopping Acquisition")
+        logging.info("Manually Stopping Acquisition")
 
+        # only sets flag, so that we can cleanly shut down once data movers have completed
         self.acqHandler.runStatus = "completed"
-        if self.acqHandler.outputMode == "UDP":
-            self.udpHandler.stopDataMovers()
-            self.acqHandler.stopRun()
-        else:
-            # gotta wait for hdf writer to finish. let checkRunEndFlags handle it?
-            pass
+        self.hexitec.iTfgDisable()
+
+        # override the num histograms to the current latest one, so that
+        # data movers etc will stop cleanly
+        # self.acqHandler.num_histograms = self.acqHandler.getLatestTimeFrame()
 
     def checkRunEndFlags(self):
         """
@@ -245,7 +254,8 @@ class Histogrammer:
             logging.debug("ACQ HANDLER SAYS STATUS COMPLETE")
             # acqHandler says it's completed the acq, check for final steps
             if self.acqHandler.outputMode == "UDP":
-                if not self.udpHandler.areDataMoversFinished(self.acqHandler.num_histograms, self.mappedMode):
+                num_tf = self.acqHandler.num_histograms or self.acqHandler.getLatestTimeFrame()
+                if not self.udpHandler.areDataMoversFinished(num_tf, self.mappedMode):
                     return
             elif self.acqHandler.outputMode == "HDF5":
                 if not self.acqHandler.isHDFWriterComplete(self.hexitec.getFlushedFrame()):
@@ -360,27 +370,11 @@ class Histogrammer:
         self.hexitec.loadLinearityAscii(self.chip_select, filename, self.lin_scale)
 
     @UsesHexitecLibrary()
-    def setCShare(self, enableEdgePos: bool | None = None, enableNegNeighbour: bool | None = None,
-                  enableLPos: bool | None = None,
-                  enableSumming: bool | None = None, enablePositonAdjustment: bool | None = None):
-        """Enable/Disable the various Charge Sharing Correction options.
+    def setCShare(self):
+        """Enable/Disable the various Charge Sharing Correction options."""
 
-        :param enableEdgePos: Enable correction that shares positive signal with neighbours
-        :param enableNegNeighbour: Enable correction that shares signal with
-        negative neighbours
-        :param enableSumming: Enable Any charge summing corrections.
-        :param enablePositonAdjustment: Enable position adjustment signal
-        correction
-        """
-
-        enableEdgePos = self.enbEdgePos if enableEdgePos is None else enableEdgePos
-        enableNegNeighbour = self.enbNegNeb if enableNegNeighbour is None else enableNegNeighbour
-        enableLPos = self.enbLPos if enableLPos is None else enableLPos
-        enableSumming = self.enbSumming if enableSumming is None else enableSumming
-        enablePositonAdjustment = self.enbAdjPosn if enablePositonAdjustment is None else enablePositonAdjustment
-
-        self.hexitec.setCShareMode(self.chip_select, enableEdgePos, enableNegNeighbour, enableLPos,
-                                   not enableSumming, not enablePositonAdjustment)
+        self.hexitec.setCShareMode(self.chip_select, self.enbEdgePos, self.enbNegNeb, self.enbLPos,
+                                   not self.enbLPos, not self.enbAdjPosn)
 
     @UsesHexitecLibrary()
     def loadCShare_pos(self, filename: str):

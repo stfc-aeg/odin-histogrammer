@@ -83,7 +83,8 @@ class AcquisitionHandler(BaseHandler):
             "num_histograms": (
                 lambda: self.num_histograms,
                 partial(setattr, self, "num_histograms"),
-                {"min": 1, "description": "Number of Histograms expected to be output"}
+                {"min": 0, "description": ("Number of Histograms expected to be output. "
+                                           "Set to 0 to run continuously")}
             ),
             "count": {
                 "detector_frames": (
@@ -139,7 +140,7 @@ class AcquisitionHandler(BaseHandler):
                 logging.debug("SOFTWARE TRIGGER ACQ FINISHED")
                 self.runStatus = "completed"
         else:
-            if not self.frame_counters.finishedTimeFrame < self.num_histograms:
+            if self.num_histograms and not self.frame_counters.finishedTimeFrame < self.num_histograms:
                 # We've sent as many finished time frames as we said we wanted.
                 logging.debug("HARDWARE TRIGGER ACQ FINISHED")
                 self.runStatus = "completed"
@@ -202,14 +203,8 @@ class AcquisitionHandler(BaseHandler):
     @UsesHexitecLibrary()
     def getLatestTimeFrame(self) -> int:
         """Get the latest Time Frame number either from flushed frames or from UDP"""
-        lastTF = -1
-        frameToken = self.hexitec.getFlushedFrame()
-        if frameToken & TimeFrameMasks.FLUSHED_VALID:
-            lastTF = frameToken & TimeFrameMasks.FLUSHED_COUNT
-        else:
-            lastTF = self.hexitec.getInpTimeFrame(0) & TimeFrameMasks.INPUT_COUNT
 
-        return lastTF
+        return self.hexitec.getInpTimeFrame(0) & TimeFrameMasks.INPUT_COUNT
 
     @UsesHexitecLibrary()
     def setupHdfWriter(self):
@@ -267,6 +262,7 @@ class AcquisitionHandler(BaseHandler):
         self.montiorCallback.stop()
 
         self.frame_counters = self.getFrameCounter()
+        self.itfg_status = self.getItfgStatus()
         self.hexitec.setGlobReg(GlobalRegisters.RUN_REG, 0)
 
         self.runStatus = "idle"
