@@ -4,12 +4,11 @@ from .base_controller import BaseError, BaseController
 
 from functools import partial
 from typing import get_args, Literal
-from enum import Enum
 from os import path, listdir
 
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from histogrammer.adapter.histogrammer import Histogrammer
-from histogrammer.adapter.AcquisitionHandler import runStatus
+from histogrammer.handler.AcquisitionHandler import runStatus
 from histogrammer.util import HexitecUnconnectedException, InternalLibException
 from histogrammer.lib.defines import ClusterEnable, ClusterMode, AutoTrigMode, MappedMode
 from histogrammer.lib.defines import RunMode, NumBins

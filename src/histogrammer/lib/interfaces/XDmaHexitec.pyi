@@ -743,39 +743,97 @@ class XDmaHexitec:
     def getSrcAddr(self, core: int = 0) -> int:
         """
         Get the Source IP Address
-        
+
         :param core: Which UDP Core to read from. Defaults to 0
         :type core: int
         :return: The Source IP Addr as a 32 bit integer
         :rtype: int
         """
 
+    def setSrcAddr(self, addr: int, core: int = 0):
+        """
+        Set the Source Ip Address
+
+        :param addr: The IP address as a 32 bit number
+        :type addr: int
+        :param core: Which UDP core to write to. Defaults to 0
+        :type core: int
+        """
+
     def getDestAddr(self, core: int = 0) -> int:
         """
         Get the Destination IP Address
-        
+
         :param core: Which UDP Core to read from. Defaults to 0
         :type core: int
         :return: The Desination IP Addr as a 32 bit integer
         :rtype: int
         """
 
+    def setDestAddr(self, addr: int, core: int = 0):
+        """
+        Set the Destination Ip Address
+
+        :param addr: The IP address as a 32 bit number
+        :type addr: int
+        :param core: Which UDP core to write to. Defaults to 0
+        :type core: int
+        """
+
     def getAccelRXAddr(self, core: int = 0) -> int:
         """
         Get the Histogrammer's recieve IP Address
-        
+
         :param core: Which UDP Core to read from. Defaults to 0
         :type core: int
         :return: The receive IP Addr as a 32 bit integer
         :rtype: int
         """
-    
+
+    def setAccelRXAddr(self, addr: int, core: int = 0):
+        """
+        Set the Histogrammer's recieve Ip Address
+
+        :param addr: The IP address as a 32 bit number
+        :type addr: int
+        :param core: Which UDP core to write to. Defaults to 0
+        :type core: int
+        """
+
     def getAccelTXAddr(self, core: int = 0) -> int:
         """
         Get the Histogrammer's Send IP Address
-        
+
         :param core: Which UDP Core to read from. Defaults to 0
         :type core: int
         :return: The Sending IP Addr as a 32 bit integer
         :rtype: int
         """
+
+    def setAccelTXAddr(self, addr: int, core: int = 0):
+        """
+        Set the Histogrammer's Send Ip Address
+
+        :param addr: The IP address as a 32 bit number
+        :type addr: int
+        :param core: Which UDP core to write to. Defaults to 0
+        :type core: int
+        """
+
+    def getSrcPort(self) -> int:
+        """Get the port number of the Source"""
+
+    def setSrcPort(self, port: int):
+        """Set the port number of the Source"""
+
+    def getAccelPort(self) -> int:
+        """Get the port number of the histogrammer"""
+
+    def setAccelPort(self, port: int):
+        """Set the port number of the histogrammer"""
+
+    def getDestPort(self) -> int:
+        """Get the port number of the destination"""
+
+    def setDestPort(self, port: int):
+        """Set the port number of the destination"""
