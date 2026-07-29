@@ -1,7 +1,11 @@
-from .base_adapter import BaseAdapter
-from .controller import HistogramController
+from odin_control.adapters.adapter import ApiAdapter
+from .controller import HistogramController, HistogramException
+from histogrammer._version import __version__
 
-class HistogramAdapter(BaseAdapter):
+
+class HistogramAdapter(ApiAdapter):
     """Histogram Adapter Class"""
 
     controller_cls = HistogramController
+    error_cls = HistogramException
+    version = __version__

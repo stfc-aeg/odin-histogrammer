@@ -13,6 +13,7 @@ classifiers = [
     "Programming Language :: Python :: >=3.10",
 ]
 dependencies = [
+    "odin-control>=2.0",
     "pybind11",
 ]
 
@@ -21,11 +22,6 @@ readme = "README.md"
 [[project.authors]]
 email = "ashley.neaves@stfc.ac.uk"
 name = "Ashley Neaves"
-
-[project.optional-dependencies]
-odin_control = [
-    "odin-control @ git+https://github.com/odin-detector/odin-control@1.6.0#egg=odin-control"
-]
 
 [tool.scikit-build]
 sdist.include = ["src/histogrammer/_version.py"]

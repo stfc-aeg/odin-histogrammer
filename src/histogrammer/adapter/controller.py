@@ -1,12 +1,12 @@
 import logging
 
-from .base_controller import BaseError, BaseController
+from odin_control.adapters.base_controller import BaseController, BaseError
 
 from functools import partial
 from typing import get_args, Literal
 from os import path, listdir
 
-from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
+from odin_control.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from histogrammer.adapter.histogrammer import Histogrammer
 from histogrammer.handler.AcquisitionHandler import runStatus
 from histogrammer.util import HexitecUnconnectedException, InternalLibException
