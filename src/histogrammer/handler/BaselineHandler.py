@@ -9,7 +9,7 @@ from histogrammer.util import UsesHexitecLibrary, splitRegisterIntoValues
 from histogrammer.lib import MASK_BSUB_DITHER, MASK_BSUB_DIV, MASK_BSUB_MODE
 from histogrammer.lib import GET_THRES_POS, GET_THRES_NEG, DATA_PATH_SHORT_BURST_MODE
 
-from histogrammer.adapter.base_handler import BaseHandler
+from histogrammer.handler.base_handler import BaseHandler
 
 
 class BaselineHandler(BaseHandler):

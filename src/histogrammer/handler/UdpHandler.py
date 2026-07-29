@@ -7,7 +7,7 @@ from typing import Literal
 from histogrammer.lib import XDmaHexitec, HexitecUdpRxConnection
 from histogrammer.lib import DATA_PATH_ENB_FLUSH, ETHERNET_PM_TICK_REG, DM0_AUTO_TF
 from histogrammer.util import UsesHexitecLibrary, HexitecUnconnectedException
-from histogrammer.adapter.base_handler import BaseHandler
+from histogrammer.handler.base_handler import BaseHandler
 from histogrammer.lib.defines import GlobalRegisters, HexitecGeneration, MappedMode
 
 dataMoverStatus = Literal["stopped", "idle", "running"]

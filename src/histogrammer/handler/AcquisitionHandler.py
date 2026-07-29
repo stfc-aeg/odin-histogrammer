@@ -11,7 +11,7 @@ from histogrammer.lib import CircularHdfWriter
 from histogrammer.lib import CircWriterReadoutMode, CircWriterUdpTxOnlyMode, HexitecITfgMode
 from histogrammer.util import UsesHexitecLibrary, HexitecUnconnectedException
 from histogrammer.util import AcquisitionMode, OutputMode, TriggerMode
-from histogrammer.adapter.base_handler import BaseHandler
+from histogrammer.handler.base_handler import BaseHandler
 from histogrammer.lib.defines import GlobalRegisters, TimeFrameStatus, TimeFrameMasks
 
 
@@ -32,6 +32,10 @@ class ITFGStatus:
     input_frame: int = 0
     output_frame: int = 0
     cycles: int = 0
+
+
+class AcquisitionError(Exception):
+    pass
 
 
 class AcquisitionHandler(BaseHandler):
@@ -68,7 +72,7 @@ class AcquisitionHandler(BaseHandler):
         self.param_tree = {
             "mode": (
                 lambda: self.trigger_mode,
-                partial(setattr, self, "trigger_mode"),
+                partial(self.setValue, "trigger_mode"),
                 {
                     "allowed_values": list(get_args(TriggerMode)),
                     "description": ("Define if we are using Hardware or Software triggering, to "
@@ -77,12 +81,12 @@ class AcquisitionHandler(BaseHandler):
             ),
             "frames_per_histogram": (
                 lambda: self.frames_per_histogram,
-                partial(setattr, self, "frames_per_histogram"),
+                partial(self.setValue, "frames_per_histogram"),
                 {"min": 1, "description": "Number of Raw Data frames expected per histogram"}
             ),
             "num_histograms": (
                 lambda: self.num_histograms,
-                partial(setattr, self, "num_histograms"),
+                partial(self.setValue, "num_histograms"),
                 {"min": 0, "description": ("Number of Histograms expected to be output. "
                                            "Set to 0 to run continuously")}
             ),
@@ -140,7 +144,8 @@ class AcquisitionHandler(BaseHandler):
                 logging.debug("SOFTWARE TRIGGER ACQ FINISHED")
                 self.runStatus = "completed"
         else:
-            if self.num_histograms and not self.frame_counters.finishedTimeFrame < self.num_histograms:
+            if (self.num_histograms and
+                not self.frame_counters.finishedTimeFrame < self.num_histograms):
                 # We've sent as many finished time frames as we said we wanted.
                 logging.debug("HARDWARE TRIGGER ACQ FINISHED")
                 self.runStatus = "completed"
@@ -280,3 +285,10 @@ class AcquisitionHandler(BaseHandler):
             return True
         else:
             return False
+
+    def setValue(self, param: str, value):
+        if self.runStatus == "running":
+            raise AcquisitionError("Cannot change settings while an Acquisition is running")
+        if not hasattr(self, param):
+            raise AttributeError(f"Acquisition Handler has no attribute called {param}")
+        setattr(self, param, value)

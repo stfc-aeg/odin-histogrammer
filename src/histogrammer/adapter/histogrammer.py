@@ -23,10 +23,10 @@ from histogrammer.lib.defines import MappedMode, NumBins, RunMode
 from histogrammer.lib.defines import ClusterMode, ClusterEnable, AutoTrigMode
 from histogrammer.lib.defines import Region, GlobalRegisters, ChipRegisters
 
-from histogrammer.adapter.base_handler import BaseHandler
-from histogrammer.adapter.UdpHandler import UdpHandler
-from histogrammer.adapter.AcquisitionHandler import AcquisitionHandler
-from histogrammer.adapter.BaselineHandler import BaselineHandler
+from histogrammer.handler.base_handler import BaseHandler
+from histogrammer.handler.UdpHandler import UdpHandler
+from histogrammer.handler.AcquisitionHandler import AcquisitionHandler
+from histogrammer.handler.BaselineHandler import BaselineHandler
 from histogrammer.util import splitRegisterIntoValues, UsesHexitecLibrary, InternalLibException
 
 
