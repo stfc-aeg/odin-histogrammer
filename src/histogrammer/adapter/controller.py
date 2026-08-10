@@ -45,13 +45,17 @@ class HistogramController(BaseController):
 
         self.fname_hdf = ""
 
-        self.allowed_file_names = [""]
+        self.allowed_ascii_file_names = [""]
+        self.allowed_h5_file_names = [""]
         if path.exists(self.config_dir) and path.isdir(self.config_dir):
-            self.allowed_file_names.extend([f for f in listdir(self.config_dir)
-                                            if path.isfile(path.join(self.config_dir, f)) and
-                                            (f.endswith(".txt") or f.endswith(".h5"))])
+            self.allowed_ascii_file_names.extend([f for f in listdir(self.config_dir)
+                                                  if path.isfile(path.join(self.config_dir, f)) and
+                                                  f.endswith(".txt")])
+            self.allowed_h5_file_names.extend([f for f in listdir(self.config_dir)
+                                               if path.isfile(path.join(self.config_dir, f)) and
+                                               f.endswith(".h5")])
 
-            # numBins allowed values dict
+        # numBins allowed values dict
         self.numBins_allowed = ["4096", "2048", "1024", "512", "256", "128", "1024 10 LSB"]
 
         tree_device = {
@@ -75,8 +79,8 @@ class HistogramController(BaseController):
         tree_thresholds["bad_pixel"] = {
             "filename": (
                 lambda: self.fname_badPixelTrig,
-                partial(self.setValue, "fname_badPixelTrig"),
-                {"allowed_values": self.allowed_file_names}
+                partial(setattr, self, "fname_badPixelTrig"),
+                {"allowed_values": self.allowed_ascii_file_names}
             ),
             "load": (None, lambda _: self.loadLUTAsciiFile("badPixelTrig"))
         }
@@ -88,7 +92,19 @@ class HistogramController(BaseController):
             "config": {
                 "thresholds": tree_thresholds,
                 "baseline": tree_baseline,
-                "hdf_filename": (lambda: self.fname_hdf, partial(self.setValue, "fname_hdf")),
+                "hdf_settings": {
+                    "filename": (lambda: self.fname_hdf, partial(setattr, self, "fname_hdf"),
+                                 {"description": "Filename to save/load all settings to/from"}),
+                    "save": (None, self.save_hdf_settings,
+                             {"description":
+                              "Save all config to a HDF5 file, as named by the filename Param"}),
+                    "load": (None, self.load_hdf_settings,
+                             {"description":
+                              "Load all config from a HDF5 file, as named by the filename Param"}),
+                    "available": (lambda: self.allowed_h5_file_names, None,
+                                  {"description":
+                                   "List of currently available hdf5 settings files"})
+                },
                 "save_hdf": (None, self.save_hdf_settings),
                 "load_hdf": (None, self.load_hdf_settings),
 
@@ -129,18 +145,18 @@ class HistogramController(BaseController):
 
                     "pos_filename": (
                         lambda: self.fname_cshare_pos,
-                        partial(self.setValue, "fname_cshare_pos"),
-                        {"allowed_values": self.allowed_file_names}
+                        partial(setattr, self, "fname_cshare_pos"),
+                        {"allowed_values": self.allowed_ascii_file_names}
                     ),
                     "mc_filename": (
                         lambda: self.fname_cshare_pos_mc,
-                        partial(self.setValue, "fname_cshare_pos_mc"),
-                        {"allowed_values": self.allowed_file_names}
+                        partial(setattr, self, "fname_cshare_pos_mc"),
+                        {"allowed_values": self.allowed_ascii_file_names}
                     ),
                     "l3_filename": (
                         lambda: self.fname_cshare_pos_l3,
-                        partial(self.setValue, "fname_cshare_pos_l3"),
-                        {"allowed_values": self.allowed_file_names}
+                        partial(setattr, self, "fname_cshare_pos_l3"),
+                        {"allowed_values": self.allowed_ascii_file_names}
                     ),
                     "pos_load": (None, lambda _: self.loadLUTAsciiFile("cshare_pos")),
                     "mc_load": (None, lambda _: self.loadLUTAsciiFile("cshare_mc")),
@@ -155,13 +171,13 @@ class HistogramController(BaseController):
                     ),
                     "gain_filename": (
                         lambda: self.fname_gain,
-                        partial(self.setValue, "fname_gain"),
-                        {"allowed_values": self.allowed_file_names}
+                        partial(setattr, self, "fname_gain"),
+                        {"allowed_values": self.allowed_ascii_file_names}
                     ),
                     "lin_filename": (
                         lambda: self.fname_linearity,
-                        partial(self.setValue, "fname_linearity"),
-                        {"allowed_values": self.allowed_file_names}
+                        partial(setattr, self, "fname_linearity"),
+                        {"allowed_values": self.allowed_ascii_file_names}
                     ),
                     "gain_load": (None, lambda _: self.loadLUTAsciiFile("gain")),
                     "lin_load": (None, lambda _: self.loadLUTAsciiFile("linearity"))
@@ -179,8 +195,8 @@ class HistogramController(BaseController):
                     "bad_pixel_mask": {  # load file to define which pixel output to mask out
                         "filename": (
                             lambda: self.fname_badPixelOut,
-                            partial(self.setValue, "fname_badPixelOut"),
-                            {"allowed_values": self.allowed_file_names}
+                            partial(setattr, self, "fname_badPixelOut"),
+                            {"allowed_values": self.allowed_ascii_file_names}
                         ),
                         "load": (None, lambda _: self.loadLUTAsciiFile("badPixelOutput"))
                     }
@@ -331,34 +347,47 @@ class HistogramController(BaseController):
             logging.debug("Disabling Triggers on Bad Pixels from file: %s",
                           self.fname_badPixelTrig)
             fullpath = path.join(self.config_dir, self.fname_badPixelTrig)
-
+            if not path.exists(fullpath):
+                raise HistogramException(f"Invalid Config File {fullpath}")
             self.histogrammer.loadBadPixelTrig(fullpath)
         elif setting == "badPixelOutput":
             logging.debug("Disabling Output on Bad Pixels from file: %s", self.fname_badPixelOut)
             fullpath = path.join(self.config_dir, self.fname_badPixelOut)
+            if not path.exists(fullpath):
+                raise HistogramException(f"Invalid Config File {fullpath}")
             self.histogrammer.loadBadPixelOutput(fullpath)
         elif setting == "gain":
             logging.debug("Setting Gain LUT from file: %s", self.fname_gain)
             fullpath = path.join(self.config_dir, self.fname_gain)
+            if not path.exists(fullpath):
+                raise HistogramException(f"Invalid Config File {fullpath}")
             self.histogrammer.loadGainCorrection(fullpath)
         elif setting == "linearity":
             logging.debug("Setting Linearity LUT from file: %s", self.fname_linearity)
             fullpath = path.join(self.config_dir, self.fname_linearity)
+            if not path.exists(fullpath):
+                raise HistogramException(f"Invalid Config File {fullpath}")
             self.histogrammer.loadLinearityCorrection(fullpath)
         elif setting == "cshare_pos":
             logging.debug("Setting Charge Sharing Correction LUTS from file: %s",
                           self.fname_cshare_pos)
             fullpath = path.join(self.config_dir, self.fname_cshare_pos)
+            if not path.exists(fullpath):
+                raise HistogramException(f"Invalid Config File {fullpath}")
             self.histogrammer.loadCShare_pos(fullpath)
         elif setting == "cshare_mc":
             logging.debug("Setting Charge Sharing Correction MC LUTS from file: %s",
                           self.fname_cshare_pos_mc)
             fullpath = path.join(self.config_dir, self.fname_cshare_pos_mc)
+            if not path.exists(fullpath):
+                raise HistogramException(f"Invalid Config File {fullpath}")
             self.histogrammer.loadCShare_mc(fullpath)
         elif setting == "cshare_l3":
             logging.debug("Setting Charge Sharing Correction L3 LUTS from file: %s",
                           self.fname_cshare_pos_l3)
             fullpath = path.join(self.config_dir, self.fname_cshare_pos_l3)
+            if not path.exists(fullpath):
+                raise HistogramException(f"Invalid Config File {fullpath}")
             self.histogrammer.loadCShare_l3(fullpath)
 
     def SetChargeSharing(self,
@@ -368,7 +397,21 @@ class HistogramController(BaseController):
         self.histogrammer.setCShare()
 
     def save_hdf_settings(self, _):
-        self.histogrammer.save_hdf_settings(self.fname_hdf)
+        logging.debug(f"Saving settings to HDF file {self.fname_hdf}")
+        fullpath = path.join(self.config_dir, self.fname_hdf)
+        self.histogrammer.save_hdf_settings(fullpath)
+        self.update_h5_file_list()
 
     def load_hdf_settings(self, _):
-        self.histogrammer.load_hdf_settings(self.fname_hdf)
+        logging.debug(f"Loading settings from HDF file {self.fname_hdf}")
+        fullpath = path.join(self.config_dir, self.fname_hdf)
+        if not fullpath.endswith(".h5"):
+            fullpath = f"{fullpath}.h5"
+        if not path.exists(fullpath):
+            raise HistogramException(f"Invalid Config File {fullpath}")
+        self.histogrammer.load_hdf_settings(fullpath)
+
+    def update_h5_file_list(self):
+        self.allowed_h5_file_names = [f for f in listdir(self.config_dir)
+                                      if path.isfile(path.join(self.config_dir, f)) and
+                                      f.endswith(".h5")]
