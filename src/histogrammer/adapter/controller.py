@@ -105,9 +105,6 @@ class HistogramController(BaseController):
                                   {"description":
                                    "List of currently available hdf5 settings files"})
                 },
-                "save_hdf": (None, self.save_hdf_settings),
-                "load_hdf": (None, self.load_hdf_settings),
-
                 # cluster mode, the cluster patterns used, and the trigger mode for pixels
                 "clustering": {
                     "mode": (lambda: self.histogrammer.clusterMode.name,
